@@ -1,0 +1,19 @@
+# Kafka binaries and extracted directories (DO NOT UPLOAD TO GITHUB)
+kafka_2.13-3.7.0/
+kafka_2.13-3.7.0.tgz
+
+# Python cache and temporary files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+
+# IDE files
+.vscode/
+.idea/
+
+# Environment files
+.env
+venv/
+.venv/

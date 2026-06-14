@@ -17,3 +17,12 @@ __pycache__/
 .env
 venv/
 .venv/
+
+# Large files and models (GitHub limit is 100MB)
+model/
+*.zip
+*.pkl
+*.session
+*_log.jsonl
+predictions_log.jsonl
+feedback_log.jsonl

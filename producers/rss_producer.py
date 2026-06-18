@@ -24,9 +24,28 @@ RSS_FEEDS = {
     "Antara Politik": {"url": "https://www.antaranews.com/rss/politik.xml", "category": "news"},
     "Tribun News": {"url": "https://www.tribunnews.com/rss", "category": "news"},
     
-    # Cek Fakta / Hoaks (Ground Truth)
+    # Cek Fakta / Hoaks (Ground Truth) — Sumber Lama
     "Liputan6 Cek Fakta": {"url": "https://feed.liputan6.com/rss/cek-fakta", "category": "fact-check"},
-    "Turnbackhoax": {"url": "https://turnbackhoax.id/feed", "category": "fact-check"}
+    "Turnbackhoax": {"url": "https://turnbackhoax.id/feed", "category": "fact-check"},
+
+    # === SUMBER BARU: Aduan Hoaks & Penipuan Digital ===
+
+    # Cek Fakta dari Media Nasional Terpercaya
+    "Kompas Cek Fakta": {"url": "https://www.kompas.com/cekfakta/rss", "category": "fact-check"},
+    "Detik Cek Fakta": {"url": "https://www.detik.com/cek-fakta/rss", "category": "fact-check"},
+    "Tempo Cek Fakta": {"url": "https://cekfakta.tempo.co/feed", "category": "fact-check"},
+    "Merdeka Cek Fakta": {"url": "https://www.merdeka.com/cek-fakta/rss", "category": "fact-check"},
+
+    # Berita Kriminal & Penipuan Siber (Scam Intelligence)
+    "Detik Hukum": {"url": "https://news.detik.com/hukum-dan-kriminal/rss", "category": "scam-news"},
+    "Kompas Nasional": {"url": "https://www.kompas.com/nasional/rss", "category": "scam-news"},
+    "Antara Hukum": {"url": "https://www.antaranews.com/rss/hukum.xml", "category": "scam-news"},
+    "Tribun Techno": {"url": "https://www.tribunnews.com/techno/rss", "category": "scam-news"},
+
+    # Teknologi & Keamanan Siber
+    "Detik Inet": {"url": "https://inet.detik.com/rss", "category": "cyber-security"},
+    "Kompas Tekno": {"url": "https://tekno.kompas.com/rss", "category": "cyber-security"},
+    "Antara Tekno": {"url": "https://www.antaranews.com/rss/tekno.xml", "category": "cyber-security"},
 }
 
 # In-memory cache to prevent duplicate ingestion of the same articles (keeps last 1000 URLs)

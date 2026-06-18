@@ -415,3 +415,32 @@ Menyinkronkan database hoaks offline lokal secara real-time dengan men-scrape ri
     "total_articles": 4102
   }
   ```
+---
+
+## 🚀 Progress InfoCheck ID V2 - Anggota 2 (Data Collection & Scraping)
+
+Proyek ini telah direstrukturisasi dan di-upgrade menuju **InfoCheck ID V2** (Multimodal Hoaks & Penipuan Detection). Berikut adalah progress penyelesaian tugas dari **Anggota 2**:
+
+### 1. Restrukturisasi Direktori (Selesai)
+Struktur folder telah dirapikan agar lebih modular:
+- pi/: Endpoint FastAPI & Model Inference
+- producers/: Script penarik data Kafka (RSS, Telegram)
+- consumers/: Script penerima data Kafka
+- ml/: Script Machine Learning & Active Learning
+- scripts/: Script utilitas (Dataset Prep, Gemini Test)
+
+### 2. Pengumpulan & Cleaning Dataset (Selesai)
+- Telah dibuat script otomatis scripts/prepare_dataset.py.
+- **Sumber Data**: Menggabungkan dataset berita Hoaks/Valid (Kaggle) dan dataset SMS Penipuan (Yudi WBS / Andikazidanef15).
+- **Hasil 1 (dataset/final_dataset.csv)**: Dataset raksasa berjumlah 32.230 baris (Valid: 21514, Hoaks: 10381, Penipuan: 335).
+- **Hasil 2 (dataset/final_dataset_balanced.csv)**: Dataset seimbang (Undersampling) berjumlah 1.005 baris (335 Valid, 335 Hoaks, 335 Penipuan) khusus untuk training awal model agar tidak bias.
+
+### 3. Setup Scraping Penipuan Medsos (Selesai)
+- Meng-update producers/telegram_producer.py untuk mensasar grup-grup Telegram berindikasi penipuan (Scam Konser, Joki Galbay Pinjol, Loker Palsu).
+- Channel target terbaru: LokerJabodetabek_Spam, TiketKonserWTS_Scam, PinjolCepatCair_ID, dagetf, Galbay_Pinjol_Pasti_Cair01, dll.
+
+### 4. Uji Coba Gemini 1.5/2.5 Flash OCR (Selesai)
+- Telah mengumpulkan 22 screenshot asli dari berbagai modus penipuan di folder screenshot/.
+- Telah dibuat script scripts/test_gemini.py menggunakan google-genai terbaru yang berhasil mengekstrak teks gambar (OCR), mendeteksi penipuan dengan tingkat akurasi 100%, dan mengekstrak entitas nomor HP & Nomor Rekening pelaku secara otomatis.
+
+> **Catatan untuk Anggota Tim Lain**: Model IndoBERT selanjutnya bisa langsung dilatih menggunakan dataset/final_dataset_balanced.csv untuk memprediksi 3 label (Valid, Hoaks, Penipuan). Uji coba OCR gambar menggunakan AI juga sudah sukses dan siap digabungkan dengan Frontend Streamlit.

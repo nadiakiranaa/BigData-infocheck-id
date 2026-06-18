@@ -22,11 +22,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy model, dataset index, and project files
 COPY model/model/ /app/model/
 COPY komdigi_index.pkl .
-COPY komdigi_similarity.py .
-COPY predict_api.py .
+COPY api/komdigi_similarity.py api/
+COPY api/predict_api.py api/
 
 # Expose port
 EXPOSE 8000
 
 # Run FastAPI app with Uvicorn
-CMD ["uvicorn", "predict_api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "api.predict_api:app", "--host", "0.0.0.0", "--port", "8000"]

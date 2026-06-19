@@ -1,12 +1,13 @@
 """
 InfoCheck ID — NLP & Model Klasifikasi (Anggota 3)
-Step 1: Load dataset gabungan
+Step 1: Load dataset gabungan (3-kelas)
 Step 2: EDA (Exploratory Data Analysis)
-Step 3: Baseline model — TF-IDF + Logistic Regression
+Step 3: Baseline model — TF-IDF + Logistic Regression (3-Kelas)
 """
 
 import pandas as pd
 import re
+import os
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
@@ -19,35 +20,36 @@ import pickle
 # =========================================================
 def load_dataset():
     print("=" * 60)
-    print("STEP 1: Loading dataset...")
+    print("STEP 1: Loading 3-class dataset...")
     print("=" * 60)
 
-    df_hoax = pd.read_excel('dataset/kaggle/Cleaned/dataset_turnbackhoax_10_cleaned.xlsx')
-    df_hoax = df_hoax[['Clean Narasi', 'hoax']].rename(columns={'Clean Narasi': 'text'})
+    dataset_path = 'dataset/final_dataset_balanced.csv'
+    if not os.path.exists(dataset_path):
+        dataset_path = 'dataset/final_dataset.csv'
+        print(f"Balanced dataset tidak ditemukan. Menggunakan: {dataset_path}")
+    else:
+        print(f"Menggunakan balanced dataset: {dataset_path}")
 
-    df_cnn = pd.read_excel('dataset/kaggle/Cleaned/dataset_cnn_10k_cleaned.xlsx')
-    df_cnn = df_cnn[['text_new', 'hoax']].rename(columns={'text_new': 'text'})
-
-    df_kompas = pd.read_excel('dataset/kaggle/Cleaned/dataset_kompas_4k_cleaned.xlsx')
-    df_kompas = df_kompas[['text_new', 'hoax']].rename(columns={'text_new': 'text'})
-
-    df_tempo = pd.read_excel('dataset/kaggle/Cleaned/dataset_tempo_6k_cleaned.xlsx')
-    df_tempo = df_tempo[['text_new', 'hoax']].rename(columns={'text_new': 'text'})
-
-    df_komdigi = pd.read_csv('dataset/komdigi/komdigi_hoaks.csv')
-    df_komdigi = df_komdigi[['body_text']].rename(columns={'body_text': 'text'})
-    df_komdigi['hoax'] = 1
-
-    df_all = pd.concat([df_hoax, df_cnn, df_kompas, df_tempo, df_komdigi], ignore_index=True)
+    df_all = pd.read_csv(dataset_path)
     df_all = df_all.dropna(subset=['text'])
     df_all = df_all.drop_duplicates(subset=['text'])
-    df_all['hoax'] = df_all['hoax'].astype(int)
+
+    # Map label ke numerik: Valid -> 0, Hoaks -> 1, Penipuan -> 2, Netral -> 3
+    def map_label(x):
+        x_str = str(x).strip().lower()
+        if x_str == 'valid':    return 0
+        elif x_str in ['hoax', 'hoaks']: return 1
+        elif x_str == 'penipuan': return 2
+        elif x_str == 'netral': return 3
+        return 0  # fallback
+
+    df_all['label_num'] = df_all['final_label'].apply(map_label)
 
     print(f"Total baris setelah cleaning: {len(df_all)}")
-    print("\nDistribusi label (0=valid, 1=hoaks):")
-    print(df_all['hoax'].value_counts())
+    print("\nDistribusi label numerik (0=Valid, 1=Hoaks, 2=Penipuan, 3=Netral):")
+    print(df_all['label_num'].value_counts())
     print("\nProporsi:")
-    print(df_all['hoax'].value_counts(normalize=True))
+    print(df_all['label_num'].value_counts(normalize=True))
 
     return df_all
 
@@ -64,12 +66,20 @@ def eda(df):
     print("\nStatistik panjang teks (karakter):")
     print(df['text_length'].describe())
 
-    print("\nContoh teks HOAKS (label=1):")
-    for t in df[df['hoax'] == 1]['text'].head(2):
+    print("\nContoh teks VALID (label=0):")
+    for t in df[df['label_num'] == 0]['text'].head(2):
         print("-", str(t)[:200], "...\n")
 
-    print("Contoh teks VALID (label=0):")
-    for t in df[df['hoax'] == 0]['text'].head(2):
+    print("Contoh teks HOAKS (label=1):")
+    for t in df[df['label_num'] == 1]['text'].head(2):
+        print("-", str(t)[:200], "...\n")
+
+    print("Contoh teks PENIPUAN (label=2):")
+    for t in df[df['label_num'] == 2]['text'].head(2):
+        print("-", str(t)[:200], "...\n")
+
+    print("Contoh teks NETRAL (label=3):")
+    for t in df[df['label_num'] == 3]['text'].head(2):
         print("-", str(t)[:200], "...\n")
 
     return df
@@ -92,14 +102,14 @@ def clean_text(text):
 # =========================================================
 def baseline_model(df):
     print("\n" + "=" * 60)
-    print("STEP 3: Baseline Model - TF-IDF + Logistic Regression")
+    print("STEP 3: Baseline Model - TF-IDF + Logistic Regression (3-Kelas)")
     print("=" * 60)
 
     df['text_clean'] = df['text'].apply(clean_text)
 
     X_train, X_test, y_train, y_test = train_test_split(
-        df['text_clean'], df['hoax'],
-        test_size=0.2, random_state=42, stratify=df['hoax']
+        df['text_clean'], df['label_num'],
+        test_size=0.2, random_state=42, stratify=df['label_num']
     )
 
     print(f"\nTrain size: {len(X_train)}, Test size: {len(X_test)}")
@@ -109,8 +119,9 @@ def baseline_model(df):
     X_train_tfidf = vectorizer.fit_transform(X_train)
     X_test_tfidf = vectorizer.transform(X_test)
 
-    # Logistic Regression
-    model = LogisticRegression(max_iter=1000, class_weight='balanced')
+    # Logistic Regression (Multinomial 3-Class)
+    # multi_class deprecated in sklearn >= 1.5, lbfgs handles multinomial by default
+    model = LogisticRegression(max_iter=1000, class_weight='balanced', solver='lbfgs')
     model.fit(X_train_tfidf, y_train)
 
     # Evaluation
@@ -118,16 +129,16 @@ def baseline_model(df):
 
     print("\n--- Hasil Evaluasi Baseline ---")
     print(f"Accuracy : {accuracy_score(y_test, y_pred):.4f}")
-    print(f"F1-score : {f1_score(y_test, y_pred):.4f}")
+    print(f"\nF1-score (weighted): {f1_score(y_test, y_pred, average='weighted'):.4f}")
     print("\nClassification Report:")
-    print(classification_report(y_test, y_pred, target_names=['Valid', 'Hoaks']))
+    print(classification_report(y_test, y_pred, target_names=['Valid', 'Hoaks', 'Penipuan', 'Netral']))
     print("\nConfusion Matrix:")
     print(confusion_matrix(y_test, y_pred))
 
-    # Save model & vectorizer for later use / comparison table
+    # Save model & vectorizer
     with open('baseline_model.pkl', 'wb') as f:
         pickle.dump({'model': model, 'vectorizer': vectorizer}, f)
-    print("\nModel baseline disimpan ke 'baseline_model.pkl'")
+    print("\nModel baseline 3-kelas disimpan ke 'baseline_model.pkl'")
 
     return model, vectorizer
 
@@ -141,5 +152,5 @@ if __name__ == "__main__":
     model, vectorizer = baseline_model(df)
 
     print("\n" + "=" * 60)
-    print("SELESAI. Selanjutnya: fine-tuning IndoBERT (lihat tahap berikutnya).")
+    print("SELESAI. Model baseline berhasil di-upgrade ke 3-kelas.")
     print("=" * 60)

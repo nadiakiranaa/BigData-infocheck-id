@@ -26,3 +26,4 @@ model/
 *_log.jsonl
 predictions_log.jsonl
 feedback_log.jsonl
+implementation_plan.md

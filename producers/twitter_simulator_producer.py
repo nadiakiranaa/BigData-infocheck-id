@@ -259,6 +259,7 @@ def simulate_and_send():
     Ambil tweet simulasi secara acak dan kirim ke Kafka topic 'twitter-tweets'.
     Setiap batch kirim 3-7 tweet acak dari dataset.
     """
+    global SENT_TWEET_IDS  # ← taruh di sini
     logger.info("Starting Twitter simulation batch...")
 
     # Ambil subset acak dari dataset (3-7 tweet per batch)
@@ -300,7 +301,6 @@ def simulate_and_send():
     logger.info(f"Batch selesai: {sent_count} tweets terkirim ke topic 'twitter-tweets'")
 
     # Bersihkan cache kalau terlalu besar
-    global SENT_TWEET_IDS
     if len(SENT_TWEET_IDS) > 500:
         SENT_TWEET_IDS = set(list(SENT_TWEET_IDS)[-250:])
 

@@ -10,6 +10,10 @@ torch
 pandas
 scikit-learn
 openpyxl
+<<<<<<< HEAD
 python-telegram-bot==21.0.1
 beautifulsoup4==4.12.3
 google-genai python-dotenv
+=======
+python-multipart
+>>>>>>> 1508dc8f7f1540e30bc52ff6a4a99a1b304dcda3

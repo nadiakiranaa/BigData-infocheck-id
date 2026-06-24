@@ -290,6 +290,15 @@ def predict_image(req: PredictImageRequest):
     extracted_text = ocr_result.get("text", "")
     gemini_label = ocr_result.get("kategori", "VALID").capitalize()
     
+# [TAMBAHAN Anggota 4] Cegah teks error dari OCR (misal Gemini overload/gagal)
+    # ikut diklasifikasi sebagai konten asli — ini bisa menghasilkan label
+    # Hoaks/Penipuan yang menyesatkan padahal isinya cuma pesan error teknis.
+    if extracted_text.startswith("Gagal memproses gambar"):
+        raise HTTPException(
+            status_code=503,
+            detail=f"OCR gagal memproses gambar: {ocr_result.get('alasan', 'Layanan OCR sedang tidak tersedia, coba lagi nanti.')}"
+        )
+
     # Jalankan model hybrid pada teks yang diekstrak
     hybrid_label, final_scores, indobert_scores, bl_scores = predict_hybrid(extracted_text)
     

@@ -10,3 +10,6 @@ torch
 pandas
 scikit-learn
 openpyxl
+python-telegram-bot==21.0.1
+beautifulsoup4==4.12.3
+google-genai python-dotenv

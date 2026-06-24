@@ -29,8 +29,9 @@ def analyze_screenshot(image_path: str):
         
         Tugasmu:
         1. Baca teks yang ada di dalam gambar screenshot ini.
-        2. Klasifikasikan informasi ini menjadi salah satu dari 3 kategori: [VALID, HOAX, PENIPUAN].
+        2. Klasifikasikan informasi ini menjadi salah satu dari 4 kategori: [VALID, HOAX, PENIPUAN, NETRAL].
            *Jika gambar ini dilaporkan korban sebagai bukti transfer penipuan, berikan klasifikasi PENIPUAN meskipun struknya terlihat asli.*
+           *Jika gambar ini hanya promosi toko resmi atau percakapan biasa, klasifikasikan sebagai NETRAL.*
         3. Jika ini adalah PENIPUAN, tolong ekstrak nomor rekening, nama bank, atau nomor HP pelaku yang tertera di teks.
         
         Berikan jawabanmu dalam format JSON murni seperti ini:

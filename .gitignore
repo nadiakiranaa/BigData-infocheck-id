@@ -18,6 +18,11 @@ __pycache__/
 venv/
 .venv/
 
+# Frontend dependencies and build output
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
 # Large files and models (GitHub limit is 100MB)
 model/
 *.zip
@@ -26,3 +31,4 @@ model/
 *_log.jsonl
 predictions_log.jsonl
 feedback_log.jsonl
+implementation_plan.md

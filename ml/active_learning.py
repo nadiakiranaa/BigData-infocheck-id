@@ -8,6 +8,7 @@ import os
 import json
 import pandas as pd
 import pickle
+import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from datetime import datetime
@@ -16,6 +17,14 @@ FEEDBACK_FILE = "feedback_log.jsonl"
 ARCHIVE_FILE = "feedback_log_archived.jsonl"
 TRAINING_POOL_CSV = "dataset/new_training_pool.csv"
 BASELINE_MODEL_PATH = "baseline_model.pkl"
+
+def clean_text(text):
+    text = str(text).lower()
+    text = re.sub(r'http\S+|www\.\S+', ' ', text)        # hapus URL
+    text = re.sub(r'<.*?>', ' ', text)                    # hapus tag HTML
+    text = re.sub(r'[^a-z0-9\s]', ' ', text)              # hapus karakter non-alfanumerik
+    text = re.sub(r'\s+', ' ', text).strip()              # hapus spasi berlebih
+    return text
 
 def load_feedback_data():
     """Membaca data koreksi dari feedback_log.jsonl"""
@@ -30,18 +39,24 @@ def load_feedback_data():
                 continue
             try:
                 data = json.loads(line)
-                # Petakan label koreksi ke biner (Valid = 0, Hoaks = 1, Mencurigakan diabaikan untuk training biner)
                 correct_lbl = data.get("correct_label")
+                
+                # Petakan label koreksi ke 4-kelas:
+                # Valid = 0, Hoaks = 1, Penipuan = 2, Netral = 3
                 if correct_lbl == "Valid":
                     label_num = 0
-                elif correct_lbl == "Hoaks":
+                elif correct_lbl in ["Hoaks", "Hoax"]:
                     label_num = 1
+                elif correct_lbl == "Penipuan":
+                    label_num = 2
+                elif correct_lbl == "Netral":
+                    label_num = 3
                 else:
-                    continue # Abaikan jika label koreksi berupa "Mencurigakan" demi stabilitas training
+                    continue  # Abaikan label tidak dikenal
                     
                 records.append({
-                    "text": data.get("text"),
-                    "hoax": label_num
+                    "text": clean_text(data.get("text")),
+                    "label_num": label_num
                 })
             except Exception as e:
                 print(f"Gagal mem-parsing baris feedback: {e}")
@@ -55,19 +70,27 @@ def retrain_baseline(new_samples):
     """
     print("Memulai proses retraining model baseline...")
     
-    # 1. Load data latih asli (jika ada) untuk digabungkan
-    # Sebagai simulasi efisien, kita gabungkan data feedback baru ke model baseline lama
     try:
-        # Load dataset asli dari excel (jika ada di direktori)
-        # Jika tidak ada, gunakan data baru saja
         df_new = pd.DataFrame(new_samples)
         
-        # Skenario: Gabungkan dengan dataset turnbackhoax asli jika tersedia
-        original_csv = "dataset/komdigi/komdigi_hoaks.csv"
+        # Skenario: Gabungkan dengan dataset balanced asli jika tersedia
+        original_csv = "dataset/final_dataset_balanced.csv"
+        if not os.path.exists(original_csv):
+            original_csv = "dataset/final_dataset.csv"
+            
         if os.path.exists(original_csv):
             df_orig = pd.read_csv(original_csv)
-            df_orig = df_orig[['body_text']].rename(columns={'body_text': 'text'})
-            df_orig['hoax'] = 1
+            # Map labels to numeric (4-kelas)
+            def map_label(x):
+                x_str = str(x).strip().lower()
+                if x_str == 'valid':    return 0
+                elif x_str in ['hoax', 'hoaks']: return 1
+                elif x_str == 'penipuan': return 2
+                elif x_str == 'netral': return 3
+                return 0
+            df_orig['label_num'] = df_orig['final_label'].apply(map_label)
+            df_orig['text'] = df_orig['text'].apply(clean_text)
+            df_orig = df_orig[['text', 'label_num']]
             df_train = pd.concat([df_orig, df_new], ignore_index=True)
         else:
             df_train = df_new
@@ -77,9 +100,11 @@ def retrain_baseline(new_samples):
         # 2. Vektorisasi TF-IDF & Retrain
         vectorizer = TfidfVectorizer(max_features=10000, ngram_range=(1, 2))
         X_tfidf = vectorizer.fit_transform(df_train['text'])
-        y = df_train['hoax'].astype(int)
+        y = df_train['label_num'].astype(int)
         
-        model = LogisticRegression(max_iter=1000, class_weight='balanced')
+        # Logistic Regression (Multinomial 3-Class)
+        # multi_class deprecated in sklearn >= 1.5, lbfgs handles multinomial by default
+        model = LogisticRegression(max_iter=1000, class_weight='balanced', solver='lbfgs')
         model.fit(X_tfidf, y)
         
         # 3. Simpan model baseline terupdate

@@ -570,6 +570,8 @@ resp = requests.post('http://localhost:8000/predict-image', json={'image_base64'
 print(json.dumps(resp.json(), indent=2, ensure_ascii=False))
 "
 ```
+![Bukti OCR](docs/ocr.jpeg)
+
 
 ### Step 7 — Jalankan Active Learning (Retraining Otomatis)
 

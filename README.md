@@ -1,446 +1,1094 @@
-# InfoCheck ID — Data Pipeline & Ingestion Kafka
+# InfoCheck ID — Big Data Hoaks & Penipuan Detector
 
-Dokumentasi ini menjelaskan arsitektur, instalasi, dan cara menjalankan pipeline data streaming real-time menggunakan **Apache Kafka** untuk proyek **InfoCheck ID**.
+**Sistem deteksi hoaks dan penipuan berbasis Big Data untuk konten berbahasa Indonesia**
 
----
+## Daftar Isi
 
-## 🛠️ Persyaratan Sistem (Prerequisites)
-
-1. **Java Development Kit (JDK)**: JDK 21 — download dari https://www.oracle.com/java/technologies/downloads/#jdk21-windows
-2. **Python 3.13+**: Untuk menjalankan producer script
-3. **Apache Kafka 3.7.0**: Download dari https://kafka.apache.org/downloads → Scala 2.13, extract ke `C:\kafka_2.13-3.7.0`
-
----
-
-## ⚙️ Langkah Setup & Menjalankan Kafka
-
-> ⚠️ **Penting**: Setiap kali membuka terminal PowerShell baru, wajib set Java PATH dulu:
-> ```powershell
-> $env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.11"
-> $env:Path += ";$env:JAVA_HOME\bin"
-> ```
-
-### 1. Menjalankan Zookeeper (Terminal 1)
-
-```powershell
-$env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.11"
-$env:Path += ";$env:JAVA_HOME\bin"
-cd C:\kafka_2.13-3.7.0
-.\bin\windows\zookeeper-server-start.bat .\config\zookeeper.properties
-```
-
-Tunggu hingga muncul: `binding to port 0.0.0.0/0.0.0.0:2181`
-
-### 2. Menjalankan Kafka Server (Terminal 2)
-
-```powershell
-$env:JAVA_HOME = "C:\Program Files\Java\jdk-21.0.11"
-$env:Path += ";$env:JAVA_HOME\bin"
-$env:KAFKA_HEAP_OPTS = "-Xmx512M -Xms256M"
-cd C:\kafka_2.13-3.7.0
-.\bin\windows\kafka-server-start.bat .\config\server.properties
-```
-
-Tunggu hingga muncul: `[KafkaServer id=0] started`
-
-### 3. Topic yang Digunakan
-
-```powershell
-# Cek topic yang sudah ada
-.\bin\windows\kafka-topics.bat --list --bootstrap-server localhost:9092
-
-# Jika perlu buat ulang:
-.\bin\windows\kafka-topics.bat --create --topic rss-news --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1
-.\bin\windows\kafka-topics.bat --create --topic telegram-messages --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1
-```
+1. [Gambaran Umum Proyek](#gambaran-umum-proyek)
+2. [Arsitektur Sistem](#arsitektur-sistem)
+3. [Rubrik Penilaian Final Project](#rubrik-penilaian-final-project)
+4. [Pembagian Tugas Anggota](#pembagian-tugas-anggota)
+5. [Prasyarat dan Instalasi](#prasyarat-dan-instalasi)
+6. [Anggota 1 — Pengumpulan Data (Data Ingestion)](#anggota-1--pengumpulan-data-data-ingestion)
+7. [Anggota 2 — Kafka Stream Processing](#anggota-2--kafka-stream-processing)
+8. [Anggota 3 — NLP, API dan Model (Inti Sistem)](#anggota-3--nlp-api-dan-model-inti-sistem)
+9. [Anggota 4 — Kafka Stream Consumer](#anggota-4--kafka-stream-consumer)
+10. [Anggota 5 — Visualisasi dan Dashboard](#anggota-5--visualisasi-dan-dashboard)
+11. [Konfigurasi Environment Variables](#konfigurasi-environment-variables)
+12. [Menjalankan Seluruh Sistem](#menjalankan-seluruh-sistem)
+13. [Dokumentasi API Endpoint](#dokumentasi-api-endpoint)
+14. [Deployment dengan Docker](#deployment-dengan-docker)
+15. [Struktur Direktori Lengkap](#struktur-direktori-lengkap)
+16. [Troubleshooting](#troubleshooting)
 
 ---
 
-## 🐍 Setup Python & Ingestion
+## Gambaran Umum Proyek
 
-### Instalasi Library
+**InfoCheck ID** adalah platform analisis Big Data real-time yang dirancang untuk **mendeteksi, mengklasifikasikan, dan melawan penyebaran hoaks serta penipuan digital di Indonesia**. Sistem ini memproses data streaming dari berbagai sumber (RSS berita, Telegram, Twitter/X) menggunakan arsitektur **Medallion Lakehouse** (Bronze — Silver — Gold) berbasis Apache Kafka.
 
-```powershell
-pip install -r requirements.txt
-```
+### Kemampuan Utama
 
-`requirements.txt`:
-```
-kafka-python-ng==2.2.3
-feedparser==6.0.11
-requests==2.32.3
-telethon==1.36.0
-beautifulsoup4
-```
-
-### Menjalankan RSS Feed Producer — Anggota 1
-
-```powershell
-python rss_producer.py
-```
-
-Polling otomatis setiap 60 detik ke RSS feed: Detik, Kompas, Antara, CNBC Indonesia, Liputan6 CekFakta, Turnbackhoax. Data masuk ke topic `rss-news`.
-
-### Menjalankan Telegram Producer — Anggota 2
-
-```powershell
-python telegram_producer.py
-```
-
-Pertama kali dijalankan akan minta login Telegram — masukkan nomor HP format `+62xxx` lalu kode OTP dari aplikasi Telegram. Session tersimpan otomatis di `infocheckid_session.session`, login berikutnya langsung jalan tanpa input ulang.
-
-Channel yang dipantau: Turn Back Hoax, CekFakta, Kompas.com, DetikNews, CNBI Indonesia. Data masuk ke topic `telegram-messages`.
+| Fitur | Keterangan |
+|-------|------------|
+| **4-Kelas Klasifikasi** | `Valid`, `Hoaks`, `Penipuan`, `Netral` |
+| **Model Hybrid** | IndoBERT (deep learning) + TF-IDF Logistic Regression (baseline) |
+| **OCR Analisis** | Deteksi penipuan dari screenshot menggunakan Gemini Vision 2.5 Flash |
+| **Real-time Streaming** | Apache Kafka multi-topik (RSS, Telegram, Twitter) |
+| **Active Learning** | Retraining otomatis model baseline dari feedback pengguna |
+| **Komdigi Similarity** | Pencarian artikel hoaks terverifikasi menggunakan TF-IDF Cosine Similarity |
+| **Ekstraksi Entitas** | Deteksi nomor HP, rekening, link penipuan secara otomatis |
 
 ---
 
-## 🔗 Panduan Integrasi Kafka (Untuk Semua Anggota)
+## Arsitektur Sistem
 
-Gunakan `kafka_helper.py` untuk kirim data ke Kafka dari script manapun:
+### Diagram Arsitektur
 
-```python
-from kafka_helper import send_to_kafka
+![Arsitektur Sistem InfoCheck ID](docs/arsitektur_sistem.png)
 
-payload = {
-    "channel_name": "Nama Channel",
-    "message": "isi pesan",
-    "sent_at": "2026-06-14T09:46:12Z",
-    "ingested_at": "2026-06-14T09:47:00Z"
-}
+### Diagram Alur
 
-send_to_kafka('telegram-messages', payload)
+![Diagram Hierarki Komponen](docs/diagram_alur.png)
+
+### Alur Data Sistem
+
+```
++---------------------------------------------------------------------+
+|                     DATA SOURCES (Bronze Layer)                      |
+|   [RSS Feeds]  [Telegram Channel]  [Twitter/X]  [Screenshot/OCR]    |
++----------------------------------+----------------------------------+
+                                   |  (Kafka Producers)
+                                   v
++---------------------------------------------------------------------+
+|              APACHE KAFKA — Message Broker (Silver Layer)            |
+|      Topic: rss-news | telegram-messages | analyzed-news             |
++----------------------------------+----------------------------------+
+                                   |  (Stream Consumer)
+                                   v
++---------------------------------------------------------------------+
+|              FASTAPI ENGINE — NLP Prediction (Anggota 3)             |
+|   IndoBERT + TF-IDF Baseline + Komdigi Similarity + OCR Gemini      |
+|   Endpoint: POST /predict | POST /predict-image | GET /stats         |
++-----------------+---------------------------------------------------+
+                  |                            |
+         (Feedback Loop)              (Results -> Kafka)
+                  v                            v
++------------------------+     +-------------------------------------+
+|   Active Learning      |     |          GOLD LAYER                  |
+|   (Auto Retraining)    |     |   Visualisasi & Dashboard (Anggota 5)|
++------------------------+     +-------------------------------------+
+```
+
+### Tumpukan Teknologi
+
+| Layer | Teknologi |
+|-------|-----------|
+| **Data Ingestion** | `feedparser`, `telethon`, `requests` |
+| **Message Broker** | Apache Kafka (`kafka-python-ng`) |
+| **ML/DL Model** | IndoBERT (`indobenchmark/indobert-base-p2`), Scikit-learn |
+| **AI OCR** | Google Gemini 2.5 Flash Vision API |
+| **Backend API** | FastAPI + Uvicorn |
+| **Dataset** | Komdigi Hoaks DB, RSS Cek Fakta, SMS Spam |
+| **Containerization** | Docker |
+
+---
+
+
+### Identifikasi Masalah 
+
+**Masalah yang diangkat:**
+Penyebaran hoaks dan penipuan digital di Indonesia meningkat pesat melalui media sosial, platform chat, dan berita online. Masyarakat kesulitan membedakan informasi valid dari konten yang menyesatkan atau berbahaya secara finansial.
+
+**Relevansi Big Data:**
+- Volume data berita dari 18+ sumber RSS feed nasional yang dikumpulkan secara kontinu
+- Velocity tinggi melalui streaming real-time Kafka dari Telegram, Twitter, dan RSS
+- Variety mencakup teks berita, pesan chat, dan gambar screenshot (multimodal)
+- Veracity menjadi inti permasalahan — menentukan kebenaran informasi
+
+**Implementasi dalam proyek:**
+- File `producers/rss_producer.py` — Ingestion dari 18 sumber berita nasional
+- File `producers/telegram_producer.py` — Monitoring channel Telegram real-time
+- File `producers/twitter_simulator_producer.py` — Simulasi data Twitter
+- File `producers/scraper_kominfo.py` — Scraping database hoaks terverifikasi Komdigi
+
+---
+
+### Inovasi dan Kreativitas
+
+**Aspek inovatif proyek:**
+
+| Inovasi | Penjelasan |
+|---------|------------|
+| **Hybrid Model** | Menggabungkan IndoBERT (deep learning) dengan TF-IDF Logistic Regression (ML klasik) untuk prediksi yang lebih akurat |
+| **4-Kelas Klasifikasi** | Tidak hanya Valid/Hoaks, tetapi menambahkan kelas Penipuan dan Netral untuk cakupan yang lebih luas |
+| **OCR + NLP Pipeline** | Screenshot chat penipuan dianalisis dengan Gemini Vision, lalu hasilnya diproses ulang oleh model hybrid |
+| **Komdigi Similarity** | Cross-referencing otomatis dengan database hoaks terverifikasi pemerintah menggunakan TF-IDF Cosine Similarity |
+| **Active Learning** | Model baseline diperbarui secara otomatis berdasarkan koreksi/feedback pengguna tanpa perlu retraining manual |
+| **Ekstraksi Entitas Penipuan** | Deteksi otomatis nomor HP, rekening bank, dan link mencurigakan dari teks dan screenshot |
+
+**Implementasi dalam proyek:**
+- File `api/predict_api.py` — Fungsi `predict_hybrid()` menggabungkan skor IndoBERT dan baseline
+- File `api/ocr_engine.py` — Pipeline Gemini Vision untuk analisis screenshot
+- File `api/komdigi_similarity.py` — TF-IDF index dan pencarian similarity
+- File `ml/active_learning.py` — Retraining otomatis dari feedback
+
+---
+
+### Data Lakehouse
+
+**Arsitektur Medallion Lakehouse yang diimplementasikan:**
+
+| Layer | Deskripsi | Implementasi |
+|-------|-----------|--------------|
+| **Bronze Layer** | Data mentah dari sumber asli tanpa transformasi | Kafka topics `rss-news` dan `telegram-messages` menerima data JSON mentah dari producers |
+| **Silver Layer** | Data yang sudah diproses, dibersihkan, dan diperkaya | `stream_consumer.py` membaca Bronze, memanggil API NLP, menghasilkan `enriched_payload` |
+| **Gold Layer** | Data siap konsumsi untuk analisis dan visualisasi | Kafka topic `analyzed-news` berisi data teranalisis lengkap dengan label, skor, dan rekomendasi |
+
+**Implementasi dalam proyek:**
+- File `producers/rss_producer.py` — Bronze layer: Ingestion data mentah dari RSS
+- File `producers/telegram_producer.py` — Bronze layer: Ingestion data mentah dari Telegram
+- File `consumers/stream_consumer.py` — Silver layer: Enrichment dan transformasi data
+- Topic Kafka `analyzed-news` — Gold layer: Data final untuk dashboard
+
+---
+
+### Teknik Analisis
+
+**Teknik analisis yang digunakan:**
+
+| Teknik | Detail |
+|--------|--------|
+| **Fine-tuned IndoBERT** | Pre-trained `indobenchmark/indobert-base-p2` di-fine-tune pada dataset balanced 4 kelas. Training 5 epoch, batch size 16, learning rate 2e-5, split 70/15/15 |
+| **TF-IDF + Logistic Regression** | Model baseline dengan max 10.000 fitur, n-gram (1,2), class weight balanced |
+| **Heuristic Boosting** | Keyword detection untuk kata-kata provokatif hoaks dan formal/resmi sebagai penguatan skor |
+| **Cosine Similarity** | Pencarian artikel hoaks Komdigi terdekat menggunakan TF-IDF vectorizer dengan threshold 0.50 |
+| **Gemini Vision OCR** | Analisis multimodal untuk mengekstrak teks dan mengklasifikasikan konten dari gambar screenshot |
+| **Sentiment dan Sensasionalisme** | Deteksi konten sensasional dan analisis sentimen sebagai fitur tambahan |
+
+**Implementasi dalam proyek:**
+- File `scripts/kaggle_finetune_indobert.py` — Script training IndoBERT 4 kelas
+- File `api/predict_api.py` — Hybrid prediction engine dan heuristic boosting
+- File `api/komdigi_similarity.py` — TF-IDF cosine similarity search
+- File `ml/nlp_baseline.py` — Training awal model baseline TF-IDF
+
+---
+
+### Inovasi Solusi 
+
+**Solusi end-to-end yang dibangun:**
+
+1. **API Prediksi Real-time** — FastAPI backend dengan 3 endpoint utama (`/predict`, `/predict-image`, `/stats`)
+2. **Multimodal Input** — Mendukung analisis teks dan screenshot sekaligus
+3. **Feedback Loop** — Pengguna dapat mengoreksi prediksi, data koreksi diakumulasi untuk retraining otomatis
+4. **Recommendation Engine** — Setiap prediksi disertai rekomendasi tindakan spesifik per kelas
+5. **Scam Entity Extraction** — Deteksi otomatis nomor HP pelaku, rekening tujuan, dan link phishing
+6. **Dockerized Deployment** — Seluruh sistem dapat di-deploy menggunakan Docker dan Docker Compose
+
+**Implementasi dalam proyek:**
+- File `api/predict_api.py` — Endpoint `/predict` dan `/predict-image`
+- File `ml/active_learning.py` — Feedback loop dan auto retraining
+- File `Dockerfile` — Container-ready deployment
+- Fungsi `get_recommendation()` dan `extract_scam_entities_from_text()` di `predict_api.py`
+
+---
+
+### K6 Demo Sistem
+
+**Komponen yang dapat di-demo-kan:**
+
+1. **Jalankan FastAPI** — Buka Swagger UI di `http://localhost:8000/docs`
+2. **Test klasifikasi teks** — Kirim teks hoaks, penipuan, valid, dan netral via curl atau Swagger
+3. **Test klasifikasi screenshot** — Upload gambar screenshot chat penipuan via endpoint `/predict-image`
+4. **Jalankan Kafka streaming** — Tunjukkan data mengalir dari RSS Producer ke Consumer ke API
+5. **Dashboard visualisasi** — Tunjukkan distribusi label dan timeline analisis real-time
+6. **Active Learning** — Tunjukkan proses feedback dan retraining model baseline
+
+**Command untuk demo:**
+```bash
+# Jalankan API
+uvicorn api.predict_api:app --host 0.0.0.0 --port 8000 --reload
+
+# Test prediksi hoaks
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Akan ada pemadaman listrik global selama 9 hari! Sebarkan sebelum dihapus!"}'
+
+# Test prediksi penipuan
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Selamat! Anda menang undian. Transfer Rp150.000 ke rekening 1234567890 BCA a.n. Budi."}'
+
+# Cek statistik
+curl http://localhost:8000/stats
 ```
 
 ---
 
-## 📊 Skema JSON Data di Kafka
+## Pembagian Tugas Anggota
 
-### Topic: `rss-news`
-
-```json
-{
-  "source": "Detik Ekonomi",
-  "category": "news",
-  "title": "Klaim Bantuan Sosial 2026 Melalui Link Pendaftaran Palsu",
-  "link": "https://www.detik.com/ekonomi/berita/...",
-  "description": "Beredar pesan hoaks bantuan mengatasnamakan pemerintah...",
-  "published_at": "Sun, 14 Jun 2026 09:12:00 GMT",
-  "ingested_at": "2026-06-14T09:47:00Z"
-}
-```
-
-### Topic: `telegram-messages`
-
-```json
-{
-  "channel_name": "Turn Back Hoax",
-  "sender_id": "123456789",
-  "message": "Dapatkan bantuan presiden Prabowo sebesar 5 juta rupiah sekarang juga dengan klik link ini!",
-  "sent_at": "2026-06-14T09:46:12Z",
-  "ingested_at": "2026-06-14T09:47:00Z"
-}
-```
+| No | Peran | File Utama | Tanggung Jawab |
+|----|-------|------------|----------------|
+| **Anggota 1** | Data Collector | `producers/rss_producer.py`, `producers/scraper_kominfo.py` | Pengumpulan data dari RSS feed 18+ sumber berita nasional dan scraping dataset Komdigi |
+| **Anggota 2** | Data Engineer | `producers/telegram_producer.py`, `producers/twitter_simulator_producer.py` | Ingestion data real-time dari Telegram channel dan simulasi Twitter, publish ke Kafka |
+| **Anggota 3** | ML/NLP Engineer | `api/predict_api.py`, `api/komdigi_similarity.py`, `api/ocr_engine.py`, `ml/active_learning.py`, `scripts/kaggle_finetune_indobert.py` | Fine-tuning IndoBERT, API prediksi hybrid, OCR Gemini, Active Learning, Komdigi Similarity |
+| **Anggota 4** | Stream Engineer | `consumers/stream_consumer.py` | Kafka Stream Consumer: baca data streaming, panggil API, publish hasil ke `analyzed-news` |
+| **Anggota 5** | Data Analyst | `frontend/` (dashboard), visualisasi | Konsumsi topik `analyzed-news`, dashboard visualisasi real-time hasil analisis |
 
 ---
 
-## 📦 Panduan Dataset — Anggota 3 (dari Anggota 2)
+## Prasyarat dan Instalasi
 
-Dataset sudah tersedia di folder `dataset/` dalam repository.
+### Kebutuhan Sistem
 
-### Struktur Folder
+- **Python** 3.10+ (disarankan 3.12)
+- **Java** 11+ (untuk Apache Kafka)
+- **Apache Kafka** 3.x
+- **Git**
+- **[Opsional]** Docker dan Docker Compose
+- **[Opsional]** Akun Google AI Studio (untuk fitur OCR Gemini)
 
-```
-dataset/
-├── kaggle/
-│   └── Cleaned/
-│       ├── dataset_turnbackhoax_10_cleaned.xlsx  ← HOAKS (~10.000 artikel)
-│       ├── dataset_cnn_10k_cleaned.xlsx           ← VALID (~10.000 artikel)
-│       ├── dataset_kompas_4k_cleaned.xlsx         ← VALID (~4.000 artikel)
-│       └── dataset_tempo_6k_cleaned.xlsx          ← VALID (~6.000 artikel)
-└── komdigi/
-    └── komdigi_hoaks.csv                          ← HOAKS terbaru 2026 (~4.142 artikel)
-```
-
-### Mapping Kolom
-
-| File | Kolom Teks | Kolom Label | Nilai |
-|---|---|---|---|
-| dataset_turnbackhoax_10_cleaned.xlsx | `Clean Narasi` | `hoax` | 1 = hoaks |
-| dataset_cnn_10k_cleaned.xlsx | `text_new` | `hoax` | 0 = valid |
-| dataset_kompas_4k_cleaned.xlsx | `text_new` | `hoax` | 0 = valid |
-| dataset_tempo_6k_cleaned.xlsx | `text_new` | `hoax` | 0 = valid |
-| komdigi_hoaks.csv | `body_text` | tambah manual | 1 = hoaks |
-
-### Contoh Load Dataset di Python
-
-```python
-import pandas as pd
-
-# Hoaks dari Turnbackhoax
-df_hoax = pd.read_excel('dataset/kaggle/Cleaned/dataset_turnbackhoax_10_cleaned.xlsx')
-df_hoax = df_hoax[['Clean Narasi', 'hoax']].rename(columns={'Clean Narasi': 'text'})
-
-# Valid dari CNN
-df_cnn = pd.read_excel('dataset/kaggle/Cleaned/dataset_cnn_10k_cleaned.xlsx')
-df_cnn = df_cnn[['text_new', 'hoax']].rename(columns={'text_new': 'text'})
-
-# Valid dari Kompas
-df_kompas = pd.read_excel('dataset/kaggle/Cleaned/dataset_kompas_4k_cleaned.xlsx')
-df_kompas = df_kompas[['text_new', 'hoax']].rename(columns={'text_new': 'text'})
-
-# Valid dari Tempo
-df_tempo = pd.read_excel('dataset/kaggle/Cleaned/dataset_tempo_6k_cleaned.xlsx')
-df_tempo = df_tempo[['text_new', 'hoax']].rename(columns={'text_new': 'text'})
-
-# Hoaks terbaru dari Komdigi 2026
-df_komdigi = pd.read_csv('dataset/komdigi/komdigi_hoaks.csv')
-df_komdigi = df_komdigi[['body_text']].rename(columns={'body_text': 'text'})
-df_komdigi['hoax'] = 1
-
-# Gabungkan semua
-df_all = pd.concat([df_hoax, df_cnn, df_kompas, df_tempo, df_komdigi], ignore_index=True)
-df_all = df_all.dropna(subset=['text'])
-
-print(f"Total dataset: {len(df_all)} baris")
-print(df_all['hoax'].value_counts())
-```
-
-### Distribusi Dataset
-
-| Kategori | Jumlah | Sumber |
-|---|---|---|
-| Hoaks | ~14.142 | Turnbackhoax + Komdigi |
-| Valid | ~20.000 | CNN + Kompas + Tempo |
-| **Total** | **~34.142** | |
-
-
-# Dokumentasi Anggota 3 — Modul Klasifikasi NLP & API Deteksi Hoaks InfoCheck ID
-
-Sistem deteksi hoaks berita ekonomi dan politik Indonesia berbasis IndoBERT v2 yang dipadukan dengan Komdigi Similarity Index dan sistem post-processing cerdas (kalibrasi confidence, klasifikasi kategori, status keaslian teks/deepfake, dan pendeteksi gaya berita resmi).
-
----
-
-## 1. Persyaratan Sistem dan Instalasi
-
-### Library yang Digunakan
-Dependencies untuk modul NLP dan API tercantum di requirements.txt:
-* **FastAPI** & **Uvicorn**: Framework web performa tinggi untuk membangun dan menjalankan endpoint API.
-* **Pydantic**: Validasi tipe data request dan response.
-* **Transformers** & **Torch**: Framework deep learning untuk memuat dan menjalankan model IndoBERT.
-* **Pandas** & **Openpyxl**: Membaca dataset format Excel/CSV untuk pelatihan dan similarity index.
-* **Scikit-learn**: Vektorisasi TF-IDF dan kalkulasi Cosine Similarity untuk baseline model dan pencarian kemiripan hoaks.
-* **BeautifulSoup4** & **Requests**: Mengunduh dan mem-parsing halaman web secara otomatis untuk sinkronisasi database hoaks.
-
-### Cara Setup Environment dan Instalasi
-Jalankan perintah berikut di terminal Anda untuk menyiapkan environment dan mengunduh library yang dibutuhkan:
+### 1. Clone Repository
 
 ```bash
-# 1. Masuk ke folder proyek
-cd /Users/macbookprosilver/Downloads/BigData-infocheck-id
+git clone https://github.com/nadiakiranaa/BigData-infocheck-id.git
+cd BigData-infocheck-id
+```
 
-# 2. Aktifkan virtual environment yang sudah ada
+### 2. Buat Virtual Environment
+
+```bash
+# Buat virtual environment
+python -m venv venv
+
+# Aktivasi (macOS/Linux)
 source venv/bin/activate
 
-# 3. Install semua dependencies
-pip install -r requirements.txt
+# Aktivasi (Windows)
+venv\Scripts\activate
 ```
 
----
-
-## 2. Arsitektur Deteksi Hoaks
-
-Sistem menggunakan pendekatan hybrid yang menggabungkan kecerdasan Deep Learning (pemahaman semantik konteks) dengan Database Lookup (verifikasi hoaks yang sudah diklarifikasi pemerintah):
-
-* **Model Utama: IndoBERT v2 (Fine-Tuned)**: Model klasifikasi utama dibangun menggunakan IndoBERT dengan optimalisasi berupa Class Weights (mengatasi class imbalance 2:1) dan Label Smoothing (0.1) (mencegah model overconfident pada data ambigu).
-* **Modul Alasan: Similarity Komdigi Index**: Database lookup berisi 4.092 artikel hoaks terverifikasi Kominfo/Komdigi. Konteks input dicari kemiripannya menggunakan TF-IDF Vectorizer + Cosine Similarity.
-* **Adaptive Threshold**: Mengubah batas penentuan label berdasarkan karakteristik teks. Teks dengan struktur data statistik resmi (is_formal_news) membutuhkan skor keyakinan model yang lebih tinggi (85%+) untuk dicap sebagai Hoaks guna menghindari false positive.
-* **Kategori Isu (Multi-label)**: Menentukan topik teks berita secara otomatis (ekonomi, politik, bansos, kesehatan, umum) melalui pencocokan kata kunci.
-* **Deepfake / AI-Generated Flag**: Detektor pola penyebaran viral (heuristik teks viral seperti kata "sebarkan", "klik link ini", tanda baca berulang !!!, dan penggunaan HURUF KAPITAL berlebihan).
-* **Confidence Calibration**: Disclaimer peringatan otomatis pada output jika skor probabilitas bernilai ambigu (berkisar antara 40% - 60% atau label "Mencurigakan").
-* **Model Explainability (LIME-light Word Importance)**: Pemetaan visual kata kunci kontributor skor hoaks. Sistem secara cerdas melakukan perturbasi teks (menghapus satu per satu kata dari teks input) dan memprediksi pengaruhnya secara paralel (batch forward pass) untuk menghitung kontribusi matematis tiap kata terhadap skor hoaks akhir tanpa menambah latensi.
-* **Scraper Sync (Auto-update Database)**: Mekanisme sinkronisasi database secara real-time yang mengunduh klarifikasi hoaks terbaru dari turnbackhoax.id, memperbarui dataset offline, dan membangun kembali indeks similarity TF-IDF dalam memori secara dinamis tanpa perlu merestart server.
-* **Stats Logging**: Setiap request prediksi dicatat otomatis ke log file predictions_log.jsonl untuk diolah menjadi statistik performa.
-* **Active Learning (Automated Retraining Loop)**: Endpoint khusus bagi user untuk melaporkan kesalahan prediksi. Log disimpan di feedback_log.jsonl. Ketika jumlah feedback mencapai threshold (5 data untuk simulasi demo), sistem secara otomatis memicu skrip `active_learning.py` secara background untuk melatih ulang model baseline secara real-time, mengarsipkannya, dan menyuntikkan data baru ke pool dataset (`dataset/new_training_pool.csv`) untuk retraining IndoBERT di masa depan.
-* **Analisis Sentimen (NLP)**: Menentukan sentimen teks (Negatif, Positif, atau Netral) secara leksikal.
-* **Deteksi Sensasionalisme (NLP)**: Menandai teks yang memicu kepanikan emosional (is_sensational: true/false) berdasarkan kata kunci sensasional atau penulisan provokatif.
-
----
-
-## 3. Hasil Evaluasi dan Performa Model
-
-### 3.1 Perbandingan Performa Model (Tabel Evaluasi)
-
-| Model | Accuracy (Test Set) | F1-Score (Test Set) | Karakteristik Utama | Status |
-| :--- | :---: | :---: | :--- | :---: |
-| **Baseline** (TF-IDF + Logistic Regression) | 97.84% | 96.81% | Ringan, cepat, sensitif terhadap keyword | Deprecated |
-| **IndoBERT v1** (Tanpa Kalibrasi) | 99.30% | 99.12% | Akurasi tinggi di test-set, namun overfit parah di luar domain (prediksi Hoaks >97% untuk teks valid umum) | Deprecated |
-| **IndoBERT v2** (Class Weights + Label Smoothing) | **99.56%** | **99.56%** | Sangat akurat, terkalibrasi dengan baik, dan toleran terhadap berita valid/formal | **Aktif & Siap Demo** |
-
-### 3.2 Detail Evaluasi IndoBERT v2 (Test Set Hasil Training Aktual)
-
-Berikut adalah metrik performa final dari model IndoBERT v2 yang diuji menggunakan Test Set (data tidak terlihat) dengan total 3.151 baris data:
-
-```
-              precision    recall  f1-score   support
-
-       Valid     0.9952    0.9981    0.9967      2095
-       Hoaks     0.9962    0.9905    0.9934      1056
-
-    accuracy                         0.9956      3151
-   macro avg     0.9957    0.9943    0.9950      3151
-weighted avg     0.9956    0.9956    0.9956      3151
-```
-
-**Confusion Matrix:**
-```
-[[2091    4]
- [  10 1046]]
-```
-
-Analisis hasil:
-* **True Positive (Valid)**: 2091 data valid diklasifikasikan dengan benar sebagai Valid.
-* **True Negative (Hoaks)**: 1046 hoaks diklasifikasikan dengan benar sebagai Hoaks.
-* **False Positive**: Hanya 4 data valid yang salah diklasifikasikan sebagai Hoaks (sangat rendah, membuktikan threshold adaptif formal news bekerja dengan sangat baik).
-* **False Negative**: Hanya 10 data hoaks yang salah diklasifikasikan sebagai Valid.
-
----
-
-## 4. Cara Menjalankan API Server
-
-Jalankan perintah berikut untuk memulai server FastAPI:
+### 3. Install Dependencies
 
 ```bash
-# 1. Rebuild Komdigi Similarity Index (pastikan index diperbarui menggunakan NumPy 1.x)
-python komdigi_similarity.py
+pip install --upgrade pip
+pip install -r requirements.txt
 
-# 2. Jalankan Server FastAPI menggunakan Uvicorn
-uvicorn predict_api:app --reload --port 8000
+# Install tambahan untuk deep learning (IndoBERT)
+pip install torch transformers accelerate
+
+# Install tambahan untuk OCR Gemini
+pip install google-genai pillow python-dotenv
+
+# Install tambahan untuk baseline model
+pip install joblib
 ```
-Jika sukses, terminal akan menampilkan pesan:
-`INFO: Uvicorn running on http://127.0.0.1:8000`
+
+### 4. Konfigurasi Environment Variables
+
+Buat file `.env` di root proyek:
+
+```dotenv
+# Wajib untuk fitur OCR Gemini
+GEMINI_API_KEY=your_google_gemini_api_key_here
+
+# Wajib untuk Telegram Producer (Anggota 2)
+TELEGRAM_API_ID=your_telegram_api_id
+TELEGRAM_API_HASH=your_telegram_api_hash
+TELEGRAM_PHONE=+62xxxxxxxxxx
+
+# Opsional
+KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+API_BASE_URL=http://localhost:8000
+```
 
 ---
 
-## 5. Detail Endpoint API (Dokumentasi Swagger)
+## Anggota 1 — Pengumpulan Data (Data Ingestion)
 
-Buka dokumentasi interaktif API di browser Anda: **[http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)**
+### Deskripsi Tugas
 
-### 1️⃣ POST `/predict`
-Endpoint utama untuk menganalisis teks berita.
-* **Request Body (JSON):**
-  ```json
-  {
-    "text": "Dapatkan bantuan presiden Prabowo sebesar 5 juta rupiah sekarang juga dengan klik link ini! Sebarkan sebelum dihapus!!!"
-  }
-  ```
-* **Response Body (JSON):**
-  ```json
-  {
-    "score": 97.61,
-    "label": "Hoaks",
-    "reason": "Model mendeteksi pola bahasa yang mirip konten hoaks (skor: 97.6%). Tidak ditemukan kecocokan persis dengan database hoaks Komdigi.",
-    "category": [
-      "politik",
-      "bansos"
-    ],
-    "ai_generated_flag": true,
-    "confidence_note": null,
-    "is_formal_news": false,
-    "processing_time_ms": 34.52,
-    "recommendation": "PERINGATAN: Konten terindikasi kuat sebagai HOAKS. Jangan menyebarkan berita ini untuk menghentikan rantai disinformasi. Laporkan ke portal Aduan Konten Kominfo.",
-    "sentiment": "Positif",
-    "is_sensational": true,
-    "model_version": "IndoBERT-v2-calibrated",
-    "word_importance": [
-      { "word": "Dapatkan", "importance": 0.15 },
-      { "word": "bantuan", "importance": 4.12 },
-      { "word": "presiden", "importance": 0.05 },
-      { "word": "Prabowo", "importance": 1.25 },
-      { "word": "sebesar", "importance": -0.02 },
-      { "word": "5", "importance": 2.50 },
-      { "word": "juta", "importance": 3.10 },
-      { "word": "rupiah", "importance": 0.45 }
-    ]
-  }
-  ```
+Anggota 1 bertanggung jawab mengumpulkan data berita dari **18+ sumber RSS feed** terpercaya Indonesia mencakup berita umum, ekonomi, politik, cek fakta, berita kriminal, dan teknologi/keamanan siber. Data yang dikumpulkan langsung di-publish ke Apache Kafka topic `rss-news` dalam format JSON terstandar.
 
-### 2️⃣ POST `/feedback`
-Menerima koreksi prediksi dari pengguna untuk proses perbaikan model (active learning).
-* **Request Body (JSON):**
-  ```json
-  {
-    "text": "Pertumbuhan ekonomi Indonesia tercatat 5,12 persen pada kuartal pertama 2026 menurut data Badan Pusat Statistik.",
-    "predicted_label": "Hoaks",
-    "correct_label": "Valid",
-    "note": "Ini adalah berita valid dari rilis pers resmi BPS."
-  }
-  ```
-* **Response Body (JSON):**
-  ```json
-  {
-    "status": "ok",
-    "message": "Feedback diterima. Terima kasih, data ini akan digunakan untuk meningkatkan model."
-  }
-  ```
+Sumber data yang diintegrasikan:
 
-### 3️⃣ GET `/stats`
-Menyajikan data statistik agregat prediksi yang telah diproses oleh sistem untuk divisualisasikan oleh tim frontend (Anggota 5).
-* **Response Body (JSON):**
-  ```json
-  {
-    "total_predictions": 5,
-    "label_distribution": {
-      "Hoaks": 3,
-      "Mencurigakan": 1,
-      "Valid": 1
-    },
-    "category_distribution": {
-      "politik": 2,
-      "bansos": 1,
-      "ekonomi": 2,
-      "umum": 1
-    },
-    "ai_generated_percentage": 60.0,
-    "formal_news_percentage": 20.0,
-    "average_hoax_score": 79.8
-  }
-  ```
+| Kategori | Sumber |
+|----------|--------|
+| Berita Umum/Ekonomi | Detik Ekonomi, Antara Ekonomi, CNBC Indonesia |
+| Berita Politik | Detik News, Antara Politik, Tribun News |
+| Cek Fakta/Hoaks | Liputan6 Cek Fakta, Turnbackhoax, Kompas Cek Fakta, Detik Cek Fakta, Tempo Cek Fakta, Merdeka Cek Fakta |
+| Kriminal dan Penipuan Siber | Detik Hukum, Kompas Nasional, Antara Hukum, Tribun Techno |
+| Keamanan Siber | Detik Inet, Kompas Tekno, Antara Tekno |
 
-### 4️⃣ POST `/sync`
-Menyinkronkan database hoaks offline lokal secara real-time dengan men-scrape rilis hoaks terbaru dari Turnbackhoax.id dan memperbarui indeks similarity TF-IDF dalam memori.
-* **Response Body (JSON):**
-  ```json
-  {
-    "status": "ok",
-    "message": "Sinkronisasi berhasil. Ditambahkan 10 artikel hoaks baru. Index similarity diperbarui.",
-    "total_articles": 4102
-  }
-  ```
+### Menjalankan RSS Producer
+
+```bash
+# Pastikan Kafka sudah berjalan (lihat bagian "Menjalankan Seluruh Sistem")
+
+# Jalankan RSS Producer (polling setiap 60 detik)
+python producers/rss_producer.py
+```
+
+**Output yang diharapkan:**
+```
+2026-06-26 22:00:00 - INFO - RSS Feed Kafka Ingestion service started.
+2026-06-26 22:00:00 - INFO - Starting polling RSS feeds...
+2026-06-26 22:00:01 - INFO - Parsing feed from: Detik Ekonomi (Category: news)
+2026-06-26 22:00:02 - INFO - Ingested 5 new articles from Detik Ekonomi
+...
+2026-06-26 22:01:00 - INFO - Sleeping for 60 seconds...
+```
+
+### Menjalankan Scraper Komdigi (Dataset Builder)
+
+```bash
+# Scrape database hoaks Komdigi untuk dijadikan ground truth
+python producers/scraper_kominfo.py
+```
+
 ---
 
-## 🚀 Progress InfoCheck ID V2 - Anggota 2 (Data Collection & Scraping)
+## Anggota 2 — Kafka Stream Processing
 
-Proyek ini telah direstrukturisasi dan di-upgrade menuju **InfoCheck ID V2** (Multimodal Hoaks & Penipuan Detection). Berikut adalah progress penyelesaian tugas dari **Anggota 2**:
+### Deskripsi Tugas
 
-### 1. Restrukturisasi Direktori (Selesai)
-Struktur folder telah dirapikan agar lebih modular:
-- pi/: Endpoint FastAPI & Model Inference
-- producers/: Script penarik data Kafka (RSS, Telegram)
-- consumers/: Script penerima data Kafka
-- ml/: Script Machine Learning & Active Learning
-- scripts/: Script utilitas (Dataset Prep, Gemini Test)
+Anggota 2 bertanggung jawab menyediakan dua sumber data streaming tambahan:
 
-### 2. Pengumpulan & Cleaning Dataset (Selesai)
-- Telah dibuat script otomatis scripts/prepare_dataset.py.
-- **Sumber Data**: Menggabungkan dataset berita Hoaks/Valid (Kaggle) dan dataset SMS Penipuan (Yudi WBS / Andikazidanef15).
-- **Hasil 1 (dataset/final_dataset.csv)**: Dataset raksasa berjumlah 32.230 baris (Valid: 21514, Hoaks: 10381, Penipuan: 335).
-- **Hasil 2 (dataset/final_dataset_balanced.csv)**: Dataset seimbang (Undersampling) berjumlah 1.005 baris (335 Valid, 335 Hoaks, 335 Penipuan) khusus untuk training awal model agar tidak bias.
+1. **Telegram Producer** — Membaca pesan dari channel Telegram publik (saluran info hoaks, aduan penipuan) dan mempublishnya ke topic Kafka `telegram-messages`
+2. **Twitter Simulator Producer** — Mensimulasikan data tweet berbahasa Indonesia untuk uji sistem tanpa API Twitter berbayar
 
-### 3. Setup Scraping Penipuan Medsos (Selesai)
-- Meng-update producers/telegram_producer.py untuk mensasar grup-grup Telegram berindikasi penipuan (Scam Konser, Joki Galbay Pinjol, Loker Palsu).
-- Channel target terbaru: LokerJabodetabek_Spam, TiketKonserWTS_Scam, PinjolCepatCair_ID, dagetf, Galbay_Pinjol_Pasti_Cair01, dll.
+### Setup Telegram Producer
 
-### 4. Uji Coba Gemini 1.5/2.5 Flash OCR (Selesai)
-- Telah mengumpulkan 22 screenshot asli dari berbagai modus penipuan di folder screenshot/.
-- Telah dibuat script scripts/test_gemini.py menggunakan google-genai terbaru yang berhasil mengekstrak teks gambar (OCR), mendeteksi penipuan dengan tingkat akurasi 100%, dan mengekstrak entitas nomor HP & Nomor Rekening pelaku secara otomatis.
+Sebelum menjalankan, daftarkan aplikasi Telegram:
+1. Kunjungi [my.telegram.org](https://my.telegram.org) dan login
+2. Pilih **API development tools** dan buat aplikasi baru
+3. Salin `api_id` dan `api_hash` ke file `.env`
 
-> **Catatan untuk Anggota Tim Lain**: Model IndoBERT selanjutnya bisa langsung dilatih menggunakan dataset/final_dataset_balanced.csv untuk memprediksi 3 label (Valid, Hoaks, Penipuan). Uji coba OCR gambar menggunakan AI juga sudah sukses dan siap digabungkan dengan Frontend Streamlit.
+```bash
+# Jalankan Telegram Producer
+# Pertama kali akan meminta nomor HP dan OTP Telegram (sekali saja)
+python producers/telegram_producer.py
+```
+
+**Output yang diharapkan:**
+```
+INFO - Menghubungkan ke Telegram...
+INFO - Berhasil terhubung sebagai: [Nama Pengguna]
+INFO - Mulai memantau channel: [nama_channel]
+INFO - Pesan baru diterima -> Publish ke Kafka topic 'telegram-messages'
+```
+
+### Menjalankan Twitter Simulator Producer
+
+```bash
+# Jalankan simulasi data Twitter (tidak memerlukan API key Twitter)
+python producers/twitter_simulator_producer.py
+```
+
+---
+
+## Anggota 3 — NLP, API dan Model (Inti Sistem)
+
+### Deskripsi Tugas
+
+Anggota 3 adalah inti dari seluruh sistem analisis InfoCheck ID. Bertanggung jawab atas:
+- Fine-tuning model IndoBERT 4 kelas
+- Membangun FastAPI engine prediksi hybrid
+- Modul Komdigi Similarity (pencarian hoaks terverifikasi)
+- Modul OCR Gemini (analisis screenshot)
+- Sistem Active Learning (retraining otomatis)
+
+### Label Klasifikasi (4 Kelas)
+
+Sistem mengklasifikasikan konten ke dalam 4 kelas berikut:
+
+> **Catatan untuk bukti klasifikasi:** Sertakan screenshot hasil prediksi untuk setiap kelas dalam laporan sebagai bukti sistem berjalan.
+
+| Label | Deskripsi | Contoh Bukti |
+|-------|-----------|--------------|
+| **Valid** | Informasi terbukti benar, berasal dari sumber resmi/terpercaya | Berita BPS tentang pertumbuhan ekonomi, pengumuman resmi kementerian, laporan bank sentral |
+| **Hoaks** | Berita/informasi palsu yang disebarkan tanpa motif finansial langsung | "Akan terjadi pemadaman listrik global 9 hari", teori konspirasi tanpa bukti, berita menyesatkan |
+| **Penipuan** | Konten dengan motif penipuan finansial/data pribadi | Chat penipuan loker bodong, transfer palsu, link phishing, APK berbahaya, pinjol ilegal |
+| **Netral** | Konten normal tanpa indikasi hoaks atau penipuan | Opini pribadi, promosi toko resmi, informasi umum sehari-hari, pengumuman biasa |
+
+### Step 1 — Persiapkan Dataset
+
+```bash
+# Cek dataset yang tersedia
+ls -lh dataset/
+
+# Output dataset:
+# dataset/final_dataset.csv              (dataset utama lengkap ~67MB)
+# dataset/final_dataset_balanced.csv     (dataset balanced untuk training ~2.3MB)
+# dataset/dataset_sms_spam_v1.csv        (dataset SMS spam)
+
+# Jalankan script persiapan dataset (jika diperlukan)
+python scripts/prepare_dataset.py
+```
+
+### Step 2 — Fine-Tuning IndoBERT
+
+Model IndoBERT perlu dilatih menggunakan GPU melalui Google Colab atau Kaggle. Upload file `dataset/final_dataset_balanced.csv` dan jalankan script `scripts/kaggle_finetune_indobert.py`. Setelah training selesai, download hasilnya dan taruh di `model/indobert-infocheck-final/`.
+
+**Konfigurasi Training:**
+
+| Parameter | Nilai | Keterangan |
+|-----------|-------|------------|
+| `MODEL_NAME` | `indobenchmark/indobert-base-p2` | Pre-trained model dari HuggingFace |
+| `NUM_LABELS` | `4` | Valid, Hoaks, Penipuan, Netral |
+| `MAX_LENGTH` | `256` | Panjang token maksimum |
+| `BATCH_SIZE` | `16` | Turunkan ke 8 jika out of memory |
+| `EPOCHS` | `5` | Jumlah epoch training |
+| `LR` | `2e-5` | Learning rate |
+| **Split** | `70% / 15% / 15%` | Train / Validation / Test |
+
+**Verifikasi model setelah training:**
+
+```bash
+# Pastikan file-file ini ada di folder model
+ls model/indobert-infocheck-final/
+# config.json  pytorch_model.bin  tokenizer.json  tokenizer_config.json  vocab.txt
+
+# Cek jumlah label di config.json (harus 4)
+python -c "import json; cfg=json.load(open('model/indobert-infocheck-final/config.json')); print('Num labels:', cfg.get('num_labels')); print('ID2Label:', cfg.get('id2label'))"
+```
+
+### Step 3 — Bangun Komdigi Similarity Index
+
+```bash
+# Bangun TF-IDF index dari database hoaks Komdigi (jalankan sekali saja)
+python api/komdigi_similarity.py
+```
+
+**Output yang diharapkan:**
+```
+Loading database hoaks Komdigi...
+Total artikel Komdigi: 5234
+Index tersimpan ke 'komdigi_index.pkl'
+```
+
+### Step 4 — Jalankan FastAPI Engine
+
+```bash
+# Jalankan FastAPI Server (mode development)
+uvicorn api.predict_api:app --host 0.0.0.0 --port 8000 --reload
+
+# Atau tanpa auto-reload (mode produksi)
+uvicorn api.predict_api:app --host 0.0.0.0 --port 8000 --workers 2
+```
+
+**Output yang diharapkan:**
+```
+INFO:     Loading models...
+INFO:     Baseline TF-IDF model loaded successfully.
+INFO:     IndoBERT model loaded successfully with 4 labels.
+INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+```
+
+**Akses dokumentasi API interaktif:**
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
+
+### Step 5 — Test Prediksi API
+
+**Test klasifikasi HOAKS:**
+
+```bash
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Akan ada pemadaman listrik global selama 9 hari mulai minggu depan! Sebarkan sebelum dihapus pemerintah!"}'
+```
+
+![Bukti Hoaks](docs/hoax.jpeg)
+
+**Test klasifikasi PENIPUAN:**
+
+```bash
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Selamat! Anda menang undian berhadiah motor. Transfer biaya admin Rp150.000 ke rekening 1234567890 BCA a.n. Budi."}'
+```
+
+![Bukti Penipuan](docs/scam.jpeg)
+
+**Test klasifikasi VALID:**
+
+```bash
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Bank Indonesia melaporkan pertumbuhan ekonomi kuartal I 2026 sebesar 5.12% berdasarkan data resmi BPS."}'
+```
+
+![Bukti Valid](docs/valid.jpeg)
+
+**Test klasifikasi NETRAL:**
+
+```bash
+curl -X POST http://localhost:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Halo, hari ini cuaca cerah cocok untuk olahraga pagi. Semangat menjalani hari!"}'
+```
+
+![Bukti Netral](docs/netral.jpeg)
+
+**Cek statistik prediksi:**
+
+```bash
+curl http://localhost:8000/stats
+```
+
+**Contoh output prediksi:**
+```json
+{
+  "label": "Penipuan",
+  "score": 89.5,
+  "all_scores": {
+    "Valid": 2.3,
+    "Hoaks": 5.1,
+    "Penipuan": 89.5,
+    "Netral": 3.1
+  },
+  "indobert_scores": {"Valid": 1.2, "Hoaks": 3.4, "Penipuan": 92.1, "Netral": 3.3},
+  "baseline_scores": {"Valid": 5.1, "Hoaks": 8.2, "Penipuan": 80.4, "Netral": 6.3},
+  "recommendation": "AWAS PENIPUAN: Konten ini terdeteksi sebagai modus penipuan digital...",
+  "scam_entities": {
+    "rekening": ["1234567890"],
+    "nomor_hp": []
+  }
+}
+```
+
+### Step 6 — Analisis Screenshot (OCR Gemini)
+
+```bash
+# Convert gambar ke base64 dan kirim ke API
+python -c "
+import base64, json, requests
+with open('path/to/screenshot.png', 'rb') as f:
+    img_b64 = base64.b64encode(f.read()).decode()
+resp = requests.post('http://localhost:8000/predict-image', json={'image_base64': img_b64})
+print(json.dumps(resp.json(), indent=2, ensure_ascii=False))
+"
+```
+
+### Step 7 — Jalankan Active Learning (Retraining Otomatis)
+
+Active Learning dipicu otomatis oleh API saat feedback pengguna mencapai threshold. Untuk trigger manual:
+
+```bash
+# Jalankan retraining manual dari data feedback yang sudah terkumpul
+python ml/active_learning.py
+```
+
+**Output yang diharapkan:**
+```
+Memulai proses retraining model baseline...
+Model baseline berhasil diperbarui dengan 45 data feedback baru.
+Data feedback diarsipkan dan diakumulasikan ke pool training.
+Proses Active Learning selesai dengan sukses.
+```
+
+---
+
+## Anggota 4 — Kafka Stream Consumer
+
+### Deskripsi Tugas
+
+Anggota 4 bertanggung jawab membangun Kafka Stream Consumer yang:
+1. Membaca data streaming dari topic `rss-news` dan `telegram-messages`
+2. Memanggil FastAPI Prediction Engine (Anggota 3) untuk setiap pesan
+3. Menggabungkan data asli dengan hasil analisis NLP
+4. Mempublish data yang sudah diperkaya (`enriched_payload`) ke topic `analyzed-news`
+
+### Menjalankan Stream Consumer
+
+```bash
+# Pastikan FastAPI (Anggota 3) sudah berjalan di port 8000
+# Pastikan Kafka sudah berjalan
+
+python consumers/stream_consumer.py
+```
+
+**Output yang diharapkan:**
+```
+2026-06-26 22:00:00 - INFO - Memulai Kafka Stream Consumer...
+2026-06-26 22:00:01 - INFO - Consumer terhubung ke topik input: ['rss-news', 'telegram-messages']
+2026-06-26 22:00:01 - INFO - Producer sukses terhubung untuk mengirim ke topik: 'analyzed-news'
+2026-06-26 22:00:01 - INFO - Menunggu pesan masuk dari Kafka stream...
+2026-06-26 22:01:15 - INFO - Menerima pesan dari topic 'rss-news'
+2026-06-26 22:01:16 - INFO - Analisis Sukses: Label=Penipuan (Skor: 89.5%)
+2026-06-26 22:01:16 - INFO - Berhasil mempublikasikan data teranalisis ke topic 'analyzed-news'
+```
+
+**Format payload yang dikirim ke Kafka `analyzed-news`:**
+```json
+{
+  "original_data": {
+    "source": "Detik News",
+    "title": "...",
+    "description": "...",
+    "link": "...",
+    "published_at": "..."
+  },
+  "source_topic": "rss-news",
+  "analysis": {
+    "score": 89.5,
+    "label": "Penipuan",
+    "reason": "Mirip dengan hoaks terverifikasi Komdigi (82.3%): ...",
+    "recommendation": "AWAS PENIPUAN: ...",
+    "processing_time_ms": 234
+  }
+}
+```
+
+---
+
+## Anggota 5 — Visualisasi dan Dashboard
+
+### Deskripsi Tugas
+
+Anggota 5 bertanggung jawab membangun dashboard visualisasi real-time yang mengkonsumsi data dari Kafka topic `analyzed-news` dan menampilkan:
+- Distribusi label klasifikasi (pie chart/bar chart)
+- Timeline berita yang masuk real-time
+- Alert untuk konten Hoaks/Penipuan dengan skor tinggi
+- Statistik performa sistem
+
+### Menjalankan Dashboard
+
+```bash
+# Streamlit Dashboard
+streamlit run frontend/app_dashboard.py
+
+# Atau cek statistik via API
+curl http://localhost:8000/stats | python -m json.tool
+```
+
+**Membaca dari Kafka topic `analyzed-news` secara manual:**
+
+```bash
+python -c "
+from kafka import KafkaConsumer
+import json
+consumer = KafkaConsumer(
+    'analyzed-news',
+    bootstrap_servers=['localhost:9092'],
+    auto_offset_reset='earliest',
+    value_deserializer=lambda x: json.loads(x.decode('utf-8'))
+)
+print('Menunggu data dari analyzed-news...')
+for msg in consumer:
+    data = msg.value
+    print(f\"Label: {data['analysis']['label']} | Score: {data['analysis']['score']}% | Source: {data['original_data'].get('source', 'N/A')}\")
+"
+```
+
+---
+
+## Konfigurasi Environment Variables
+
+| Variable | Diperlukan Oleh | Keterangan |
+|----------|-----------------|------------|
+| `GEMINI_API_KEY` | Anggota 3 (OCR) | API key dari Google AI Studio |
+| `TELEGRAM_API_ID` | Anggota 2 | Didapat dari my.telegram.org |
+| `TELEGRAM_API_HASH` | Anggota 2 | Didapat dari my.telegram.org |
+| `TELEGRAM_PHONE` | Anggota 2 | Nomor HP format internasional (+62xxx) |
+| `KAFKA_BOOTSTRAP_SERVERS` | Semua | Default: `localhost:9092` |
+| `API_BASE_URL` | Anggota 4 | Default: `http://localhost:8000` |
+
+---
+
+## Menjalankan Seluruh Sistem
+
+### Langkah 1 — Install dan Jalankan Apache Kafka
+
+```bash
+# Download Kafka (jika belum ada)
+wget https://downloads.apache.org/kafka/3.7.1/kafka_2.13-3.7.1.tgz
+tar -xzf kafka_2.13-3.7.1.tgz
+cd kafka_2.13-3.7.1
+
+# Terminal 1: Jalankan Zookeeper
+bin/zookeeper-server-start.sh config/zookeeper.properties
+
+# Terminal 2: Jalankan Kafka Broker
+bin/kafka-server-start.sh config/server.properties
+```
+
+### Langkah 2 — Buat Kafka Topics
+
+```bash
+bin/kafka-topics.sh --create --topic rss-news --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1
+bin/kafka-topics.sh --create --topic telegram-messages --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1
+bin/kafka-topics.sh --create --topic analyzed-news --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1
+
+# Verifikasi
+bin/kafka-topics.sh --list --bootstrap-server localhost:9092
+```
+
+### Langkah 3 — Setup Model dan Index
+
+```bash
+cd /path/to/BigData-infocheck-id
+source venv/bin/activate
+
+# Bangun Komdigi Similarity Index (sekali saja)
+python api/komdigi_similarity.py
+
+# Verifikasi model IndoBERT tersedia
+ls model/indobert-infocheck-final/
+```
+
+### Langkah 4 — Jalankan Semua Komponen (5 Terminal)
+
+```bash
+# TERMINAL 1: FastAPI Prediction Engine (Anggota 3)
+source venv/bin/activate
+uvicorn api.predict_api:app --host 0.0.0.0 --port 8000 --reload
+
+# TERMINAL 2: RSS Producer (Anggota 1)
+source venv/bin/activate
+python producers/rss_producer.py
+
+# TERMINAL 3: Telegram Producer (Anggota 2)
+source venv/bin/activate
+python producers/telegram_producer.py
+
+# TERMINAL 4: Stream Consumer (Anggota 4)
+source venv/bin/activate
+python consumers/stream_consumer.py
+
+# TERMINAL 5: Dashboard Visualisasi (Anggota 5)
+source venv/bin/activate
+streamlit run frontend/app_dashboard.py
+```
+
+### Verifikasi Sistem Berjalan
+
+```bash
+# Cek FastAPI berjalan
+curl http://localhost:8000/
+# Expected: {"message": "InfoCheck ID V2 API is running (4 Classes + OCR Support)"}
+
+# Cek statistik prediksi
+curl http://localhost:8000/stats
+
+# Monitor topic Kafka secara real-time (di direktori kafka)
+bin/kafka-console-consumer.sh --topic analyzed-news --bootstrap-server localhost:9092 --from-beginning
+```
+
+---
+
+## Dokumentasi API Endpoint
+
+### Base URL: `http://localhost:8000`
+
+---
+
+#### `GET /`
+Cek status API.
+
+**Response:**
+```json
+{"message": "InfoCheck ID V2 API is running (4 Classes + OCR Support)"}
+```
+
+---
+
+#### `POST /predict`
+Klasifikasi teks ke 4 kelas: `Valid`, `Hoaks`, `Penipuan`, `Netral`.
+
+**Request Body:**
+```json
+{
+  "text": "string — teks berita/pesan yang ingin dianalisis"
+}
+```
+
+**Response:**
+```json
+{
+  "label": "Hoaks",
+  "score": 78.5,
+  "all_scores": {
+    "Valid": 5.2,
+    "Hoaks": 78.5,
+    "Penipuan": 12.1,
+    "Netral": 4.2
+  },
+  "indobert_scores": {"Valid": 4.1, "Hoaks": 80.2, "Penipuan": 11.5, "Netral": 4.2},
+  "baseline_scores": {"Valid": 6.3, "Hoaks": 76.8, "Penipuan": 12.7, "Netral": 4.2},
+  "recommendation": "STOP! Informasi ini terindikasi sebagai hoaks...",
+  "scam_entities": {
+    "nomor_hp": ["0812345678"],
+    "rekening": ["1234567890"],
+    "links": ["bit.ly/xyz123"]
+  }
+}
+```
+
+---
+
+#### `POST /predict-image`
+Analisis screenshot menggunakan Gemini Vision OCR + model hybrid.
+
+**Request Body:**
+```json
+{
+  "image_base64": "string — gambar dalam format base64"
+}
+```
+
+**Response:**
+```json
+{
+  "extracted_text": "teks yang diekstrak dari gambar...",
+  "label": "Penipuan",
+  "ocr_label": "Penipuan",
+  "hybrid_label": "Penipuan",
+  "score": 95.2,
+  "all_scores": {"Valid": 1.1, "Hoaks": 2.3, "Penipuan": 95.2, "Netral": 1.4},
+  "recommendation": "AWAS PENIPUAN: ...",
+  "scam_entities": {
+    "nomor_hp": "0812345678",
+    "rekening": "1234567890",
+    "bank": "BCA",
+    "nama_pemilik": "Budi Santoso",
+    "links": ["bit.ly/curang"]
+  },
+  "ocr_reason": "Screenshot menunjukkan percakapan penipuan loker bodong..."
+}
+```
+
+---
+
+#### `GET /stats`
+Statistik distribusi prediksi yang tersimpan.
+
+**Response:**
+```json
+{
+  "total_predictions": 1247,
+  "labels": {
+    "Hoaks": 312,
+    "Penipuan": 445,
+    "Valid": 389,
+    "Netral": 101
+  }
+}
+```
+
+---
+
+## Deployment dengan Docker
+
+### Build dan Jalankan Docker Image
+
+```bash
+# Build Docker image
+docker build -t infocheckid:latest .
+
+# Jalankan container
+docker run -d \
+  --name infocheckid-api \
+  -p 8000:8000 \
+  -e GEMINI_API_KEY=your_api_key_here \
+  -v $(pwd)/model:/app/model \
+  -v $(pwd)/dataset:/app/dataset \
+  infocheckid:latest
+
+# Cek container berjalan
+docker ps
+docker logs infocheckid-api
+
+# Stop container
+docker stop infocheckid-api
+docker rm infocheckid-api
+```
+
+### Docker Compose (Kafka + API)
+
+Buat file `docker-compose.yml`:
+
+```yaml
+version: '3.8'
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+    ports:
+      - "9092:9092"
+
+  infocheckid-api:
+    build: .
+    depends_on:
+      - kafka
+    ports:
+      - "8000:8000"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+    volumes:
+      - ./model:/app/model
+      - ./dataset:/app/dataset
+```
+
+```bash
+# Jalankan semua services
+docker-compose up -d
+
+# Cek status
+docker-compose ps
+
+# Lihat log
+docker-compose logs -f
+
+# Stop semua
+docker-compose down
+```
+
+---
+
+## Struktur Direktori Lengkap
+
+```
+BigData-infocheck-id/
+|-- README.md                            # Dokumentasi ini
+|-- requirements.txt                     # Python dependencies
+|-- Dockerfile                           # Docker image config
+|-- .env                                 # Environment variables (jangan di-commit)
+|-- .gitignore
+|-- InfoCheck_ID_Architecture.drawio     # Diagram arsitektur sistem (sumber)
+|-- baseline_model.pkl                   # Model baseline TF-IDF (sudah terlatih)
+|-- predictions_log.jsonl                # Log semua prediksi API
+|-- feedback_log.jsonl                   # Log feedback untuk active learning
+|
+|-- docs/                                # Gambar untuk dokumentasi
+|   |-- arsitektur_sistem.png            # Screenshot diagram arsitektur
+|   +-- diagram_hierarki.png             # Screenshot diagram hierarki
+|
+|-- api/                                 # Anggota 3 — FastAPI Engine
+|   |-- predict_api.py                   # FastAPI app + endpoint prediksi hybrid
+|   |-- komdigi_similarity.py            # TF-IDF similarity ke DB Komdigi
+|   +-- ocr_engine.py                    # Gemini Vision OCR untuk screenshot
+|
+|-- producers/                           # Anggota 1 & 2 — Data Ingestion
+|   |-- rss_producer.py                  # Anggota 1: 18+ RSS feed -> Kafka
+|   |-- scraper_kominfo.py               # Anggota 1: Scraper database Komdigi
+|   |-- telegram_producer.py             # Anggota 2: Telegram -> Kafka
+|   +-- twitter_simulator_producer.py    # Anggota 2: Simulasi Twitter -> Kafka
+|
+|-- consumers/                           # Anggota 4 — Stream Consumer
+|   +-- stream_consumer.py              # Kafka consumer -> API -> analyzed-news
+|
+|-- ml/                                  # Anggota 3 — Machine Learning
+|   |-- active_learning.py               # Auto retraining model baseline
+|   +-- nlp_baseline.py                  # Training awal model baseline
+|
+|-- scripts/                             # Anggota 3 — Utilitas Training
+|   |-- kaggle_finetune_indobert.py      # Fine-tuning IndoBERT (Colab/Kaggle)
+|   |-- prepare_dataset.py               # Persiapan & cleaning dataset
+|   +-- test_gemini.py                   # Unit test OCR Gemini
+|
+|-- model/                               # Model files
+|   +-- indobert-infocheck-final/        # Model IndoBERT yang sudah di-fine-tune
+|       |-- config.json
+|       |-- pytorch_model.bin
+|       |-- tokenizer.json
+|       |-- tokenizer_config.json
+|       +-- vocab.txt
+|
+|-- dataset/                             # Dataset
+|   |-- final_dataset.csv                # Dataset utama (~67MB)
+|   |-- final_dataset_balanced.csv       # Dataset balanced untuk training
+|   |-- dataset_sms_spam_v1.csv          # Dataset SMS Spam
+|   +-- komdigi/
+|       +-- komdigi_hoaks.csv            # Database hoaks terverifikasi Komdigi
+|
+|-- frontend/                            # Anggota 5 — Dashboard Visualisasi
+|   +-- app_dashboard.py                 # Streamlit dashboard
+|
++-- utils/                              # Utilitas bersama
+    +-- kafka_helper.py                  # Helper functions untuk Kafka
+```
+
+---
+
+## Troubleshooting
+
+### Kafka Connection Refused
+
+```bash
+# Pastikan Kafka dan Zookeeper sudah berjalan
+lsof -i :9092
+
+# Restart Kafka (di direktori kafka)
+bin/kafka-server-stop.sh
+bin/kafka-server-start.sh config/server.properties
+```
+
+### IndoBERT Model Not Found
+
+```bash
+# Verifikasi path model
+ls -la model/indobert-infocheck-final/
+
+# Jika kosong, latih ulang via Colab/Kaggle
+# Sistem akan fallback ke TF-IDF Baseline otomatis (API tetap berjalan)
+```
+
+### GEMINI_API_KEY Not Found
+
+```bash
+# Cek file .env sudah ada dan berisi API key
+cat .env | grep GEMINI
+
+# Pastikan dotenv terpasang
+pip install python-dotenv
+
+# API tetap berjalan dalam mode fallback (tanpa OCR)
+```
+
+### ModuleNotFoundError saat Import
+
+```bash
+# Pastikan virtual environment aktif
+source venv/bin/activate
+
+# Install ulang semua dependencies
+pip install -r requirements.txt
+pip install torch transformers google-genai pillow python-dotenv joblib
+```
+
+### Out of Memory saat Training IndoBERT
+
+Di file `scripts/kaggle_finetune_indobert.py`, ubah parameter:
+```python
+BATCH_SIZE = 8    # turunkan dari 16
+MAX_LENGTH = 128  # turunkan dari 256
+```
+
+### Verifikasi Config Model (Harus 4 Kelas)
+
+```bash
+python -c "
+import json
+with open('model/indobert-infocheck-final/config.json') as f:
+    cfg = json.load(f)
+print('num_labels:', cfg.get('num_labels'))
+print('id2label:', cfg.get('id2label'))
+"
+# Harus: num_labels: 4, id2label: {0: 'Valid', 1: 'Hoaks', 2: 'Penipuan', 3: 'Netral'}
+```
+

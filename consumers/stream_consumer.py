@@ -9,6 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import json
 import logging
 import requests
+import re
 from kafka import KafkaConsumer, KafkaProducer
 
 # Setup logging
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # Konfigurasi Kafka
 BOOTSTRAP_SERVERS = ['localhost:9092']
-INPUT_TOPICS = ['rss-news', 'telegram-messages']
+INPUT_TOPICS = ['rss-news', 'telegram-messages', 'twitter-tweets']
 OUTPUT_TOPIC = 'analyzed-news'
 
 # Konfigurasi API NLP (Anggota 3)
@@ -33,6 +34,7 @@ def main():
             bootstrap_servers=BOOTSTRAP_SERVERS,
             auto_offset_reset='latest',
             enable_auto_commit=True,
+            api_version=(3, 3, 1),
             value_deserializer=lambda x: json.loads(x.decode('utf-8'))
         )
         logger.info(f"Consumer terhubung ke topik input: {INPUT_TOPICS}")
@@ -44,6 +46,7 @@ def main():
     try:
         producer = KafkaProducer(
             bootstrap_servers=BOOTSTRAP_SERVERS,
+            api_version=(3, 3, 1),
             value_serializer=lambda v: json.dumps(v).encode('utf-8')
         )
         logger.info(f"Producer sukses terhubung untuk mengirim ke topik: '{OUTPUT_TOPIC}'")
@@ -67,9 +70,15 @@ def main():
                 text_to_analyze = payload['description']  # Dari RSS
             elif 'title' in payload:
                 text_to_analyze = payload['title']  # Fallback RSS title
+            if 'text' in payload:
+                text_to_analyze = payload['text']  # Dari Twitter Simulator
                 
-            if not text_to_analyze.strip():
-                logger.warning("Pesan kosong, melewati analisis.")
+            # Bersihkan tag HTML (biasanya dari deskripsi RSS)
+            text_to_analyze = re.sub(r'<[^>]+>', ' ', text_to_analyze)
+            text_to_analyze = re.sub(r'\s+', ' ', text_to_analyze).strip()
+                
+            if not text_to_analyze:
+                logger.warning("Pesan kosong setelah dibersihkan, melewati analisis.")
                 continue
                 
             # 4. Kirim teks ke API Deteksi Hoaks (Anggota 3)
@@ -85,15 +94,15 @@ def main():
                     "original_data": payload,
                     "source_topic": message.topic,
                     "analysis": {
-                        "score": nlp_results['score'],
-                        "label": nlp_results['label'],
-                        "reason": nlp_results['reason'],
-                        "category": nlp_results['category'],
-                        "sentiment": nlp_results['sentiment'],
-                        "is_sensational": nlp_results['is_sensational'],
-                        "ai_generated_flag": nlp_results['ai_generated_flag'],
-                        "processing_time_ms": nlp_results['processing_time_ms'],
-                        "recommendation": nlp_results['recommendation']
+                        "score": nlp_results.get('score', 0),
+                        "label": nlp_results.get('label', 'Valid'),
+                        "reason": nlp_results.get('reason', ''),
+                        "category": nlp_results.get('category', ''),
+                        "sentiment": nlp_results.get('sentiment', ''),
+                        "is_sensational": nlp_results.get('is_sensational', False),
+                        "ai_generated_flag": nlp_results.get('ai_generated_flag', False),
+                        "processing_time_ms": nlp_results.get('processing_time_ms', 0),
+                        "recommendation": nlp_results.get('recommendation', '')
                     }
                 }
                 

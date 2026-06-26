@@ -6,7 +6,8 @@ import { OcrTestPanel } from '../components/dashboard/OcrTestPanel';
 import { ScamDbPanel } from '../components/dashboard/ScamDbPanel';
 import { StatsGrid } from '../components/dashboard/StatsGrid';
 import { Sidebar } from '../components/layout/Sidebar';
-import { feedItems, hourlyVolume, notifications, riskScatter, scamRecords, stats } from '../data/dummyData';
+import { hourlyVolume, notifications, riskScatter } from '../data/dummyData';
+import { useRealtimeData } from '../hooks/useRealtimeData';
 import type { DashboardTab } from '../types/monitoring';
 
 type DashboardPageProps = {
@@ -18,6 +19,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const { feedItems, scamRecords, stats, isLoading } = useRealtimeData();
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);
@@ -56,6 +58,19 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
       </>
     );
   };
+
+  if (isLoading) {
+    return (
+      <div className={isDarkMode ? 'dark' : ''}>
+        <div className="flex min-h-screen items-center justify-center bg-slate-100 text-slate-950 dark:bg-ink dark:text-white">
+          <div className="flex flex-col items-center gap-4">
+            <div className="h-10 w-10 animate-spin rounded-full border-4 border-cyan-500 border-t-transparent"></div>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400">Menghubungkan ke Kafka Stream...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={isDarkMode ? 'dark' : ''}>

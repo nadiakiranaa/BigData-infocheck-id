@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 
-export type FeedStatus = 'Hoaks' | 'Scam' | 'Aman' | 'Review';
+export type FeedStatus = 'Hoaks' | 'Penipuan' | 'Valid' | 'Netral' | 'Review';
 export type DashboardTab = 'overview' | 'live-feed' | 'scam-db' | 'ocr-test';
 
 export type FeedItem = {
@@ -10,6 +10,7 @@ export type FeedItem = {
   snippet: string;
   status: FeedStatus;
   confidence: number;
+  url?: string;
 };
 
 export type StatCardData = {

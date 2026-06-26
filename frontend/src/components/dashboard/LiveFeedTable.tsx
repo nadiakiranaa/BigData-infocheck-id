@@ -47,7 +47,15 @@ export function LiveFeedTable({ items, query = '' }: LiveFeedTableProps) {
               <tr key={item.id} className="transition hover:bg-slate-50 dark:hover:bg-white/[0.03]">
                 <td className="whitespace-nowrap px-5 py-4 font-mono text-xs text-cyan-700 dark:text-cyan-100">{item.time}</td>
                 <td className="whitespace-nowrap px-5 py-4 text-slate-700 dark:text-slate-300">{item.source}</td>
-                <td className="min-w-[320px] px-5 py-4 text-slate-500 dark:text-slate-400">{item.snippet}</td>
+                <td className="min-w-[320px] px-5 py-4 text-slate-500 dark:text-slate-400">
+                  {item.url ? (
+                    <a href={item.url} target="_blank" rel="noreferrer" className="hover:text-cyan-600 hover:underline dark:hover:text-cyan-400 transition-colors">
+                      {item.snippet}
+                    </a>
+                  ) : (
+                    item.snippet
+                  )}
+                </td>
                 <td className="whitespace-nowrap px-5 py-4">
                   <Badge status={item.status} />
                 </td>

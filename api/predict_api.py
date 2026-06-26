@@ -344,3 +344,7 @@ def get_stats():
 @app.get("/")
 def read_root():
     return {"message": "InfoCheck ID V2 API is running (4 Classes + OCR Support)"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("predict_api:app", host="0.0.0.0", port=8000, reload=True)

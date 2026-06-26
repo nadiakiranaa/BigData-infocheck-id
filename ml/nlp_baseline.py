@@ -1,8 +1,8 @@
 """
 InfoCheck ID — NLP & Model Klasifikasi (Anggota 3)
-Step 1: Load dataset gabungan (3-kelas)
+Step 1: Load dataset gabungan (4-kelas)
 Step 2: EDA (Exploratory Data Analysis)
-Step 3: Baseline model — TF-IDF + Logistic Regression (3-Kelas)
+Step 3: Baseline model — TF-IDF + Logistic Regression (4-Kelas)
 """
 
 import pandas as pd
@@ -20,19 +20,26 @@ import pickle
 # =========================================================
 def load_dataset():
     print("=" * 60)
-    print("STEP 1: Loading 3-class dataset...")
+    print("STEP 1: Loading 4-class dataset...")
     print("=" * 60)
 
-    dataset_path = 'dataset/final_dataset_balanced.csv'
+    dataset_path = "dataset/lakehouse/gold/final_dataset_balanced.parquet"
     if not os.path.exists(dataset_path):
-        dataset_path = 'dataset/final_dataset.csv'
-        print(f"Balanced dataset tidak ditemukan. Menggunakan: {dataset_path}")
-    else:
-        print(f"Menggunakan balanced dataset: {dataset_path}")
+        # Fallback for old architecture
+        dataset_path = "dataset/final_dataset_balanced.csv"
+        if not os.path.exists(dataset_path):
+            print(f"Error: Dataset {dataset_path} tidak ditemukan.")
+            print("Jalankan 'python scripts/prepare_dataset.py' terlebih dahulu.")
+            return
 
-    df_all = pd.read_csv(dataset_path)
+    print("Memuat dataset...")
+    if dataset_path.endswith('.parquet'):
+        df_all = pd.read_parquet(dataset_path)
+    else:
+        df_all = pd.read_csv(dataset_path)
     df_all = df_all.dropna(subset=['text'])
-    df_all = df_all.drop_duplicates(subset=['text'])
+    # drop_duplicates DIHAPUS karena Gold layer sudah bersih (Silver layer) 
+    # dan duplikat di sini adalah hasil OVERSAMPLING yang disengaja.
 
     # Map label ke numerik: Valid -> 0, Hoaks -> 1, Penipuan -> 2, Netral -> 3
     def map_label(x):
@@ -102,7 +109,7 @@ def clean_text(text):
 # =========================================================
 def baseline_model(df):
     print("\n" + "=" * 60)
-    print("STEP 3: Baseline Model - TF-IDF + Logistic Regression (3-Kelas)")
+    print("STEP 3: Baseline Model - TF-IDF + Logistic Regression (4-Kelas)")
     print("=" * 60)
 
     df['text_clean'] = df['text'].apply(clean_text)
@@ -138,7 +145,7 @@ def baseline_model(df):
     # Save model & vectorizer
     with open('baseline_model.pkl', 'wb') as f:
         pickle.dump({'model': model, 'vectorizer': vectorizer}, f)
-    print("\nModel baseline 3-kelas disimpan ke 'baseline_model.pkl'")
+    print("\nModel baseline 4-kelas disimpan ke 'baseline_model.pkl'")
 
     return model, vectorizer
 
@@ -152,5 +159,5 @@ if __name__ == "__main__":
     model, vectorizer = baseline_model(df)
 
     print("\n" + "=" * 60)
-    print("SELESAI. Model baseline berhasil di-upgrade ke 3-kelas.")
+    print("SELESAI. Model baseline berhasil di-upgrade ke 4-kelas.")
     print("=" * 60)

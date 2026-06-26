@@ -1,12 +1,12 @@
 """
 =============================================================
-InfoCheck ID V2 — IndoBERT 3-Kelas Fine-Tuning (Google Colab)
+InfoCheck ID V2 — IndoBERT 4-Kelas Fine-Tuning (Google Colab)
 =============================================================
 CARA PAKAI:
 1. Buka Google Colab → New Notebook
 2. Aktifkan GPU: Runtime > Change runtime type > T4 GPU
 3. Copy-paste SELURUH isi file ini ke satu cell
-4. Upload file 'final_dataset_balanced.csv' ke Colab (klik ikon folder di kiri)
+4. Upload file 'final_dataset_balanced.parquet' dari folder dataset/lakehouse/gold ke Colab
 5. Jalankan cell → tunggu ~15-20 menit
 6. Download folder 'indobert-infocheck-final.zip' dari Files panel
 7. Extract → taruh isinya di: model/indobert-infocheck-final/ di proyek lokal
@@ -43,10 +43,13 @@ print(f"GPU tersedia: {torch.cuda.is_available()}")
 print(f"Device: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'}")
 
 # =============================================
-# KONFIGURASI — PENTING: 3 KELAS
+# KONFIGURASI — PENTING: 4 KELAS
 # =============================================
 MODEL_NAME   = "indobenchmark/indobert-base-p2"
-DATASET_PATH = "final_dataset_balanced.csv"   # sesuaikan path jika perlu
+DATASET_PATH = "dataset/lakehouse/gold/final_dataset_balanced.parquet"
+if not os.path.exists(DATASET_PATH):
+    # Jika di Colab, biasanya file langsung di-upload ke root folder
+    DATASET_PATH = "final_dataset_balanced.parquet"
 OUTPUT_DIR   = "indobert-infocheck-final"
 
 # ⚠️ LABEL MAPPING — HARUS KONSISTEN antara training dan inference
@@ -66,7 +69,7 @@ print("\n" + "="*50)
 print("STEP 1: Load Dataset")
 print("="*50)
 
-df = pd.read_csv(DATASET_PATH)
+df = pd.read_parquet(DATASET_PATH)
 df = df.dropna(subset=["text"]).drop_duplicates(subset=["text"])
 df["final_label"] = df["final_label"].str.strip()
 df["final_label"] = df["final_label"].replace({"Hoax": "Hoaks"})  # normalize ejaan
@@ -116,15 +119,15 @@ test_ds  = InfoCheckDataset(df_test["text"].tolist(),  df_test["label"].tolist()
 print(f"\n✅ Dataset siap: {len(train_ds)} train | {len(val_ds)} val | {len(test_ds)} test")
 
 # =============================================
-# STEP 3: MODEL — NUM_LABELS = 3
+# STEP 3: MODEL — NUM_LABELS = 4
 # =============================================
 print("\n" + "="*50)
-print("STEP 3: Load IndoBERT Model (3 kelas)")
+print("STEP 3: Load IndoBERT Model (4 kelas)")
 print("="*50)
 
 model = AutoModelForSequenceClassification.from_pretrained(
     MODEL_NAME,
-    num_labels=NUM_LABELS,   # ← KUNCI: harus 3
+    num_labels=NUM_LABELS,   # ← KUNCI: harus 4
     id2label=ID2LABEL,
     label2id=LABEL2ID,
     ignore_mismatched_sizes=True,

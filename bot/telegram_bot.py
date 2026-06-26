@@ -19,6 +19,21 @@ Cara jalanin:
 
 import logging
 import os
+import sys
+import asyncio
+
+if sys.platform == 'win32':
+    try:
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    except Exception:
+        pass
+
+# Inisialisasi event loop secara eksplisit HARUS dilakukan setelah set policy
+try:
+    loop = asyncio.get_event_loop()
+except RuntimeError:
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
 from telegram import Update
 from telegram.ext import (
@@ -35,7 +50,7 @@ from formatter import format_text_result, format_image_result
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "ISI_TOKEN_DARI_BOTFATHER_DISINI")
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8779133343:AAH2Em8a7e2yeMeZ6uZ-RZ5QphxWSXUiurA")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):

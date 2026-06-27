@@ -218,6 +218,11 @@ def predict_hybrid(text):
         final_label = max(all_scores, key=all_scores.get)
         final_scores = {k: round(v, 2) for k, v in all_scores.items()}
 
+    # Clamp scores to maximum 100.0
+    for k in final_scores:
+        if final_scores[k] > 100.0:
+            final_scores[k] = 100.0
+
     return final_label, final_scores, indobert_scores, bl_scores
 
 

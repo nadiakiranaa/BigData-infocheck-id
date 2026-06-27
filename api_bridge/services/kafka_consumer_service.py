@@ -53,7 +53,12 @@ def consume_messages():
                 source_type = "Telegram" if "telegram" in source_topic.lower() else ("Twitter" if "twitter" in source_topic.lower() else "RSS")
                 source = original.get("source", source_topic)
                 
-                text_snippet = original.get("message") or original.get("description") or original.get("text") or original.get("title", "")
+                if source_type == "RSS":
+                    title = original.get("title", "").strip()
+                    desc = original.get("description", "").strip()
+                    text_snippet = f"{title} - {desc}" if title and desc else (title or desc)
+                else:
+                    text_snippet = original.get("message") or original.get("text") or original.get("description", "")
                 # Potong jika terlalu panjang
                 if len(text_snippet) > 150:
                     text_snippet = text_snippet[:147] + "..."

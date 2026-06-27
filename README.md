@@ -6,26 +6,39 @@
 
 1. [Gambaran Umum Proyek](#gambaran-umum-proyek)
 2. [Arsitektur Sistem](#arsitektur-sistem)
-3. [Rubrik Penilaian Final Project](#rubrik-penilaian-final-project)
-4. [Pembagian Tugas Anggota](#pembagian-tugas-anggota)
-5. [Prasyarat dan Instalasi](#prasyarat-dan-instalasi)
-6. [Anggota 1 — Pengumpulan Data (Data Ingestion)](#anggota-1--pengumpulan-data-data-ingestion)
-7. [Anggota 2 — Kafka Stream Processing](#anggota-2--kafka-stream-processing)
-8. [Anggota 3 — NLP, API dan Model (Inti Sistem)](#anggota-3--nlp-api-dan-model-inti-sistem)
-9. [Anggota 4 — Kafka Stream Consumer](#anggota-4--kafka-stream-consumer)
-10. [Anggota 5 — Visualisasi dan Dashboard](#anggota-5--visualisasi-dan-dashboard)
-11. [Konfigurasi Environment Variables](#konfigurasi-environment-variables)
-12. [Menjalankan Seluruh Sistem](#menjalankan-seluruh-sistem)
-13. [Dokumentasi API Endpoint](#dokumentasi-api-endpoint)
-14. [Deployment dengan Docker](#deployment-dengan-docker)
-15. [Struktur Direktori Lengkap](#struktur-direktori-lengkap)
-16. [Troubleshooting](#troubleshooting)
+3. [Pembagian Tugas Anggota](#pembagian-tugas-anggota)
+4. [Prasyarat dan Instalasi](#prasyarat-dan-instalasi)
+5. [Anggota 1 — Pengumpulan Data (Data Ingestion)](#anggota-1--pengumpulan-data-data-ingestion)
+6. [Anggota 2 — Kafka Stream Processing](#anggota-2--kafka-stream-processing)
+7. [Anggota 3 — NLP, API dan Model (Inti Sistem)](#anggota-3--nlp-api-dan-model-inti-sistem)
+8. [Anggota 4 — Kafka Stream Consumer & Telegram Bot](#anggota-4--kafka-stream-consumer--telegram-bot)
+9. [Anggota 5 — Visualisasi, Dashboard & API Bridge](#anggota-5--visualisasi-dashboard--api-bridge)
+10. [Konfigurasi Environment Variables](#konfigurasi-environment-variables)
+11. [Menjalankan Seluruh Sistem (Panduan End-to-End)](#menjalankan-seluruh-sistem-panduan-end-to-end)
+12. [Dokumentasi API Endpoint](#dokumentasi-api-endpoint)
+13. [Deployment dengan Docker](#deployment-dengan-docker)
+14. [Struktur Direktori Lengkap](#struktur-direktori-lengkap)
+15. [Troubleshooting](#troubleshooting)
 
 ---
 
 ## Gambaran Umum Proyek
 
 **InfoCheck ID** adalah platform analisis Big Data real-time yang dirancang untuk **mendeteksi, mengklasifikasikan, dan melawan penyebaran hoaks serta penipuan digital di Indonesia**. Sistem ini memproses data streaming dari berbagai sumber (RSS berita, Telegram, Twitter/X) menggunakan arsitektur **Medallion Lakehouse** (Bronze — Silver — Gold) berbasis Apache Kafka.
+
+## Identifikasi Masalah & Relevansi Big Data (Konsep 5V)
+
+Penyebaran hoaks dan penipuan daring (seperti phising, lowongan kerja palsu, dan scam tiket konser) di Indonesia telah mencapai titik kritis. Data kuantitatif dari Kominfo mencatat ribuan isu hoaks baru setiap tahunnya yang merugikan masyarakat triliunan rupiah. Solusi tradisional tidak lagi mumpuni karena karakteristik data saat ini membutuhkan pendekatan **Big Data (5V)**:
+
+1. **Volume**: Data teks, chat, dan gambar penipuan yang beredar di platform Telegram dan berita nasional mencapai jutaan pesan per hari.
+2. **Velocity**: Kecepatan penyebaran hoaks sangat tinggi (*real-time*). Sistem harus mampu mendeteksi dan memfilter pesan dalam hitungan milidetik sebelum pesan tersebut viral.
+3. **Variety**: Format data sangat beragam. Terdapat data teks terstruktur (berita), semi-terstruktur (JSON dari Telegram API), hingga data tidak terstruktur (Gambar/Screenshot penipuan).
+4. **Veracity**: Tingkat keandalan informasi sangat bervariasi. Dibutuhkan model AI (IndoBERT) untuk memvalidasi tingkat kebenaran (Veracity) dari suatu teks.
+5. **Value**: Hasil akhir (Value) berupa *dashboard* statistik *real-time* dan Bot interaktif yang menyelamatkan masyarakat dari kerugian finansial akibat penipuan.
+
+**Gap Analisis:** Saat ini, sistem pengecekan fakta di Indonesia (seperti TurnBackHoax) masih mengandalkan pencarian manual oleh manusia (*human-in-the-loop*). Belum ada solusi terintegrasi yang mampu melakukan **pengecekan otomatis secara real-time** pada aliran *chat* dan mendeteksi teks di dalam gambar secara bersamaan.
+
+---
 
 ### Kemampuan Utama
 
@@ -79,6 +92,12 @@
 |   (Auto Retraining)    |     |   Visualisasi & Dashboard (Anggota 5)|
 +------------------------+     +-------------------------------------+
 ```
+
+**Justifikasi Teknologi:**
+- **Apache Kafka**: Dipilih karena kemampuannya menangani *throughput* data *streaming* yang sangat tinggi dengan latensi rendah, serta *fault-tolerance* yang menjaga pesan tidak hilang.
+- **Data Lakehouse (Parquet)**: Menggabungkan fleksibilitas Data Lake dan struktur Data Warehouse. Format Parquet dipilih karena penyimpanannya berbasis kolom (columnar), sehingga sangat efisien untuk kueri analitik dan melatih ulang model Machine Learning.
+- **FastAPI**: Dipilih sebagai jembatan AI karena performanya yang sangat cepat (asynchronous) dibandingkan Flask/Django.
+
 
 ### Tumpukan Teknologi
 
@@ -135,24 +154,39 @@ Penyebaran hoaks dan penipuan digital di Indonesia meningkat pesat melalui media
 
 ---
 
-### Data Lakehouse
+## Implementasi Data Lakehouse (Medallion Architecture)
 
-**Arsitektur Medallion Lakehouse yang diimplementasikan:**
+Untuk menjamin kualitas data, keandalan sistem dalam skala besar (Big Data), dan memfasilitasi _machine learning_, proyek InfoCheck ID mengadopsi pola penyimpanan **Data Lakehouse** dengan **Medallion Architecture**. Pendekatan ini membagi data ke dalam tiga lapisan (layer) kualitas yang terus meningkat:
 
-| Layer | Deskripsi | Implementasi |
-|-------|-----------|--------------|
-| **Bronze Layer** | Data mentah dari sumber asli tanpa transformasi | Kafka topics `rss-news` dan `telegram-messages` menerima data JSON mentah dari producers |
-| **Silver Layer** | Data yang sudah diproses, dibersihkan, dan diperkaya | `stream_consumer.py` membaca Bronze, memanggil API NLP, menghasilkan `enriched_payload` |
-| **Gold Layer** | Data siap konsumsi untuk analisis dan visualisasi | Kafka topic `analyzed-news` berisi data teranalisis lengkap dengan label, skor, dan rekomendasi |
+```mermaid
+flowchart LR
+    A[Data Mentah dari Kafka & Scraping] -->|Ingest| B[(Bronze Layer)]
+    B -->|Cleaning, Deduplikasi, Normalisasi Label| C[(Silver Layer)]
+    C -->|Format Parquet, Filter 4 Kelas| D[(Gold Layer)]
+    D -->|Training Data| E((Model AI IndoBERT))
+```
 
-**Implementasi dalam proyek:**
-- File `producers/rss_producer.py` — Bronze layer: Ingestion data mentah dari RSS
-- File `producers/telegram_producer.py` — Bronze layer: Ingestion data mentah dari Telegram
-- File `consumers/stream_consumer.py` — Silver layer: Enrichment dan transformasi data
-- Topic Kafka `analyzed-news` — Gold layer: Data final untuk dashboard
+### 1. Bronze Layer (Raw Data / Data Mentah)
+- **Tujuan:** Menyimpan data persis seperti aslinya dari berbagai sumber (RSS, Telegram, Twitter, API OCR Gemini) tanpa modifikasi apa pun. Ini bertindak sebagai *single source of truth* untuk sejarah data.
+- **Karakteristik:** Data seringkali masih kotor, formatnya beragam (terstruktur maupun tidak terstruktur), dan disimpan dalam bentuk JSON mentah (misalnya `ocr_results.json` atau file log Kafka).
+- **Keuntungan:** Jika terjadi kesalahan pada logika _processing_ di tahap selanjutnya, kita bisa selalu memproses ulang data dari awal karena data aslinya (Bronze) tidak pernah hilang.
+
+### 2. Silver Layer (Cleaned & Conformed Data)
+- **Tujuan:** Membersihkan, memfilter, dan menstandardisasi data mentah dari lapisan Bronze agar siap untuk dianalisis lebih lanjut.
+- **Proses yang Terjadi:** 
+  - Menghilangkan duplikasi berita atau pesan (*deduplikasi*).
+  - Pembersihan teks (_Text Preprocessing_): menghapus emoji yang tidak perlu, membetulkan _typo_, menghapus spasi ganda, dan membuang karakter aneh (HTML tags).
+  - Normalisasi kolom (misalnya mengubah semua format tanggal menjadi ISO 8601 standar).
+- **Hasil Akhir:** Kumpulan data bersih (*dataset* perantara) yang lebih mudah untuk di-kueri oleh Data Analyst namun belum dikelompokkan secara agregat.
+
+### 3. Gold Layer (Business / Aggregated Data)
+- **Tujuan:** Menyajikan data tingkat akhir yang siap pakai (*consumption-ready*) untuk pelatihan (*training*) Model Machine Learning (IndoBERT) atau disajikan langsung ke Dashboard Visualisasi.
+- **Proses yang Terjadi:**
+  - Penyeimbangan Data (*Data Balancing*): Memfilter data menjadi 4 kelas absolut (Valid, Hoaks, Penipuan, Netral) yang masing-masing porsinya disamaratakan (25%) untuk mencegah model yang bias.
+  - Penyimpanan ke format **Parquet** (seperti `final_dataset_balanced.parquet`). Format _columnar_ ini dipilih karena sangat efisien (ringan dan cepat) saat dibaca berulang kali (I/O optimization) selama proses _training_ model besar di GPU.
+- **Hasil Akhir:** *Dataset* premium berkualitas tinggi yang menggerakkan sistem prediksi pintar dari InfoCheck ID.
 
 ---
-
 ### Teknik Analisis
 
 **Teknik analisis yang digunakan:**
@@ -232,8 +266,8 @@ curl http://localhost:8000/stats
 | **Anggota 1** | Data Collector | `producers/rss_producer.py`, `producers/scraper_kominfo.py` | Pengumpulan data dari RSS feed 18+ sumber berita nasional dan scraping dataset Komdigi |
 | **Anggota 2** | Data Engineer | `producers/telegram_producer.py`, `producers/twitter_simulator_producer.py` | Ingestion data real-time dari Telegram channel dan simulasi Twitter, publish ke Kafka |
 | **Anggota 3** | ML/NLP Engineer | `api/predict_api.py`, `api/komdigi_similarity.py`, `api/ocr_engine.py`, `ml/active_learning.py`, `scripts/kaggle_finetune_indobert.py` | Fine-tuning IndoBERT, API prediksi hybrid, OCR Gemini, Active Learning, Komdigi Similarity |
-| **Anggota 4** | Stream Engineer | `consumers/stream_consumer.py` | Kafka Stream Consumer: baca data streaming, panggil API, publish hasil ke `analyzed-news` |
-| **Anggota 5** | Data Analyst | `frontend/` (dashboard), visualisasi | Konsumsi topik `analyzed-news`, dashboard visualisasi real-time hasil analisis |
+| **Anggota 4** | Stream Engineer | `consumers/stream_consumer.py`, `bot/telegram_bot.py` | Kafka Stream Consumer: baca data streaming, panggil API, publish hasil ke `analyzed-news`. Serta antarmuka Bot Telegram. |
+| **Anggota 5** | Data Analyst | `frontend/` (dashboard), `api_bridge/` | Konsumsi topik `analyzed-news`, dashboard visualisasi real-time hasil analisis, dan REST API Bridge untuk frontend. |
 
 ---
 
@@ -247,6 +281,9 @@ curl http://localhost:8000/stats
 - **Git**
 - **[Opsional]** Docker dan Docker Compose
 - **[Opsional]** Akun Google AI Studio (untuk fitur OCR Gemini)
+- **[Opsional]** Token Bot Telegram dari BotFather (jika ingin menjalankan fitur Bot)
+
+> **💡 Tip Jalan Pintas:** Ingin cara instan? Kamu bisa langsung menggunakan Docker Compose untuk menjalankan Kafka, Zookeeper, dan API sekaligus tanpa install manual. Cukup jalankan perintah: `docker-compose up -d` (detailnya ada di bagian **Deployment dengan Docker**).
 
 ### 1. Clone Repository
 
@@ -296,6 +333,9 @@ GEMINI_API_KEY=your_google_gemini_api_key_here
 TELEGRAM_API_ID=your_telegram_api_id
 TELEGRAM_API_HASH=your_telegram_api_hash
 TELEGRAM_PHONE=+62xxxxxxxxxx
+
+# Wajib untuk Telegram Bot (Anggota 4)
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
 
 # Opsional
 KAFKA_BOOTSTRAP_SERVERS=localhost:9092
@@ -592,7 +632,7 @@ Proses Active Learning selesai dengan sukses.
 
 ---
 
-## Anggota 4 — Kafka Stream Consumer
+## Anggota 4 — Kafka Stream Consumer & Telegram Bot
 
 ### Deskripsi Tugas
 
@@ -601,6 +641,19 @@ Anggota 4 bertanggung jawab membangun Kafka Stream Consumer yang:
 2. Memanggil FastAPI Prediction Engine (Anggota 3) untuk setiap pesan
 3. Menggabungkan data asli dengan hasil analisis NLP
 4. Mempublish data yang sudah diperkaya (`enriched_payload`) ke topic `analyzed-news`
+
+Selain itu, Anggota 4 juga bertanggung jawab membuat **Bot Telegram** sebagai antarmuka langsung untuk pengguna.
+
+### Menjalankan Bot Telegram (Antarmuka Pengguna)
+
+Bot Telegram memungkinkan masyarakat mengirimkan teks berita, link artikel, maupun _screenshot_ chat penipuan untuk dianalisis oleh sistem secara _real-time_.
+
+```bash
+# Pastikan predict_api (Anggota 3) sudah berjalan di port 8000
+# Jalankan bot
+python bot/telegram_bot.py
+```
+*(Pastikan `TELEGRAM_BOT_TOKEN` sudah diset di dalam file `.env` atau *environment variable* kamu).*
 
 ### Menjalankan Stream Consumer
 
@@ -645,7 +698,7 @@ python consumers/stream_consumer.py
 
 ---
 
-## Anggota 5 — Visualisasi dan Dashboard
+## Anggota 5 — Visualisasi, Dashboard & API Bridge
 
 ### Deskripsi Tugas
 
@@ -654,6 +707,18 @@ Anggota 5 bertanggung jawab membangun dashboard visualisasi real-time yang mengk
 - Timeline berita yang masuk real-time
 - Alert untuk konten Hoaks/Penipuan dengan skor tinggi
 - Statistik performa sistem
+
+Selain itu, Anggota 5 juga menyediakan **API Bridge** (REST API) untuk menjembatani basis data dengan _frontend_ dashboard.
+
+### Menjalankan API Bridge (Dashboard API)
+
+API Bridge adalah FastAPI ringan yang berjalan di port terpisah (8001).
+
+```bash
+# Jalankan FastAPI bridge di port 8001
+uvicorn api_bridge.main:app --reload --port 8001
+```
+Akses dokumentasi Swagger API Bridge di: `http://localhost:8001/docs`
 
 ### Menjalankan Dashboard
 
@@ -699,69 +764,78 @@ for msg in consumer:
 
 ---
 
-## Menjalankan Seluruh Sistem
+## Menjalankan Seluruh Sistem (Panduan End-to-End)
 
-### Langkah 1 — Install dan Jalankan Apache Kafka
+Untuk mendemonstrasikan sistem ini, jalankan langkah-langkah berikut secara berurutan menggunakan **terminal yang berbeda-beda**.
 
+> **Prasyarat:** Pastikan Kafka, Zookeeper, atau Docker Desktop sudah menyala dan dependensi Python sudah di-*install* (`pip install -r requirements.txt`).
+
+### 1. Siapkan Data Lakehouse (Hanya 1x di awal)
 ```bash
-# Download Kafka (jika belum ada)
-wget https://downloads.apache.org/kafka/3.7.1/kafka_2.13-3.7.1.tgz
-tar -xzf kafka_2.13-3.7.1.tgz
-cd kafka_2.13-3.7.1
-
-# Terminal 1: Jalankan Zookeeper
-bin/zookeeper-server-start.sh config/zookeeper.properties
-
-# Terminal 2: Jalankan Kafka Broker
-bin/kafka-server-start.sh config/server.properties
+python scripts/prepare_dataset.py
 ```
+*(Menghasilkan `final_dataset_balanced.parquet` di layer Gold)*
 
-### Langkah 2 — Buat Kafka Topics
-
+### 2️. Nyalakan Infrastruktur Kafka (Atau gunakan Docker)
 ```bash
-bin/kafka-topics.sh --create --topic rss-news --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1
-bin/kafka-topics.sh --create --topic telegram-messages --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1
-bin/kafka-topics.sh --create --topic analyzed-news --bootstrap-server localhost:9092 --partitions 3 --replication-factor 1
-
-# Verifikasi
-bin/kafka-topics.sh --list --bootstrap-server localhost:9092
+docker-compose up -d
 ```
+*(Tunggu 10 detik hingga Kafka & Zookeeper menyala. Jika tidak menggunakan Docker, jalankan manual seperti di bagian Deployment).*
 
-### Langkah 3 — Setup Model dan Index
-
+### 3️. Nyalakan API Model AI (Anggota 3)
 ```bash
-cd /path/to/BigData-infocheck-id
-source venv/bin/activate
-
-# Bangun Komdigi Similarity Index (sekali saja)
-python api/komdigi_similarity.py
-
-# Verifikasi model IndoBERT tersedia
-ls model/indobert-infocheck-final/
-```
-
-### Langkah 4 — Jalankan Semua Komponen (5 Terminal)
-
-```bash
-# TERMINAL 1: FastAPI Prediction Engine (Anggota 3)
+# Buka Terminal 1
 source venv/bin/activate
 uvicorn api.predict_api:app --host 0.0.0.0 --port 8000 --reload
+```
+*(Server AI akan standby di port 8000).*
 
-# TERMINAL 2: RSS Producer (Anggota 1)
-source venv/bin/activate
-python producers/rss_producer.py
-
-# TERMINAL 3: Telegram Producer (Anggota 2)
-source venv/bin/activate
-python producers/telegram_producer.py
-
-# TERMINAL 4: Stream Consumer (Anggota 4)
+### 4️. Nyalakan Kafka Consumer (Anggota 4)
+```bash
+# Buka Terminal 2
 source venv/bin/activate
 python consumers/stream_consumer.py
+```
+*(Terminal akan standby "Menunggu pesan masuk dari Kafka stream...")*
 
-# TERMINAL 5: Dashboard Visualisasi (Anggota 5)
+### 5️. Nyalakan API Bridge (Anggota 5)
+```bash
+# Buka Terminal 3
+source venv/bin/activate
+uvicorn api_bridge.main:app --reload --port 8001
+```
+
+### 6️. Nyalakan Dashboard Website (Anggota 5)
+```bash
+# Buka Terminal 4
 source venv/bin/activate
 streamlit run frontend/app_dashboard.py
+```
+*(Dashboard Streamlit akan terbuka di browser)*
+
+### 7️. Nyalakan Bot Telegram (Anggota 4)
+```bash
+# Buka Terminal 5
+source venv/bin/activate
+python bot/telegram_bot.py
+```
+*(Pastikan `TELEGRAM_BOT_TOKEN` sudah diset)*
+
+### 8️. Nyalakan Data Ingestion / Penarik Data (Anggota 1 & 2)
+Untuk mulai mengalirkan data *real-time* ke dalam *Dashboard*, jalankan skrip-skrip pencari data berikut di terminal lain (bisa dijalankan salah satu atau semuanya secara bersamaan):
+
+```bash
+# Opsi 1: Menarik Berita RSS Nasional (Anggota 1)
+python producers/rss_producer.py
+
+# Opsi 2: Menyadap Grup Telegram (Anggota 2) 
+python producers/telegram_producer.py
+
+# Opsi 3: Menarik Data Hoaks Resmi dari Kominfo (Anggota 1)
+python producers/scraper_kominfo.py
+
+# Opsi 4: Simulator Twitter (Anggota 2)
+python producers/twitter_simulator_producer.py
 ```
 
 ### Verifikasi Sistem Berjalan
@@ -774,7 +848,7 @@ curl http://localhost:8000/
 # Cek statistik prediksi
 curl http://localhost:8000/stats
 
-# Monitor topic Kafka secara real-time (di direktori kafka)
+# Monitor topic Kafka secara real-time (opsional)
 bin/kafka-console-consumer.sh --topic analyzed-news --bootstrap-server localhost:9092 --from-beginning
 ```
 
@@ -980,6 +1054,11 @@ BigData-infocheck-id/
 |   |-- arsitektur_sistem.png            # Screenshot diagram arsitektur
 |   +-- diagram_hierarki.png             # Screenshot diagram hierarki
 |
+|-- api_bridge/                          # Anggota 5 — API Dashboard tambahan
+|   |-- main.py                          # FastAPI endpoint (port 8001)
+|   |-- controllers/                     # Business logic
+|   +-- services/                        # Layanan integrasi
+|
 |-- api/                                 # Anggota 3 — FastAPI Engine
 |   |-- predict_api.py                   # FastAPI app + endpoint prediksi hybrid
 |   |-- komdigi_similarity.py            # TF-IDF similarity ke DB Komdigi
@@ -993,6 +1072,11 @@ BigData-infocheck-id/
 |
 |-- consumers/                           # Anggota 4 — Stream Consumer
 |   +-- stream_consumer.py              # Kafka consumer -> API -> analyzed-news
+|
+|-- bot/                                 # Anggota 4 — Bot Telegram
+|   |-- telegram_bot.py                  # Script utama Telegram Bot
+|   |-- api_client.py                    # Koneksi ke predict_api
+|   +-- formatter.py                     # Pembuat format pesan bot
 |
 |-- ml/                                  # Anggota 3 — Machine Learning
 |   |-- active_learning.py               # Auto retraining model baseline
@@ -1093,224 +1177,6 @@ print('id2label:', cfg.get('id2label'))
 "
 # Harus: num_labels: 4, id2label: {0: 'Valid', 1: 'Hoaks', 2: 'Penipuan', 3: 'Netral'}
 ```
-
-# 🛡️ InfoCheck ID V2 — Sistem Deteksi Hoaks & Penipuan Berbasis Big Data Real-Time
-
-Selamat datang di repositori resmi **InfoCheck ID V2**. Sistem ini adalah platform pendeteksi berita hoaks dan penipuan (Scam) secara *real-time* yang memadukan arsitektur Big Data (Apache Kafka, Data Lakehouse) dengan kecerdasan buatan (IndoBERT NLP & Gemini OCR).
-
-Proyek ini dirancang secara spesifik untuk memecahkan masalah penyebaran hoaks dan penipuan daring di Indonesia berskala masif, dengan memenuhi standar infrastruktur Big Data modern.
-
----
-
-## 🎯 1. Identifikasi Masalah & Relevansi Big Data (Konsep 5V)
-
-Penyebaran hoaks dan penipuan daring (seperti phising, lowongan kerja palsu, dan scam tiket konser) di Indonesia telah mencapai titik kritis. Data kuantitatif dari Kominfo mencatat ribuan isu hoaks baru setiap tahunnya yang merugikan masyarakat triliunan rupiah. Solusi tradisional tidak lagi mumpuni karena karakteristik data saat ini membutuhkan pendekatan **Big Data (5V)**:
-
-1. **Volume**: Data teks, chat, dan gambar penipuan yang beredar di platform Telegram dan berita nasional mencapai jutaan pesan per hari.
-2. **Velocity**: Kecepatan penyebaran hoaks sangat tinggi (*real-time*). Sistem harus mampu mendeteksi dan memfilter pesan dalam hitungan milidetik sebelum pesan tersebut viral.
-3. **Variety**: Format data sangat beragam. Terdapat data teks terstruktur (berita), semi-terstruktur (JSON dari Telegram API), hingga data tidak terstruktur (Gambar/Screenshot penipuan).
-4. **Veracity**: Tingkat keandalan informasi sangat bervariasi. Dibutuhkan model AI (IndoBERT) untuk memvalidasi tingkat kebenaran (Veracity) dari suatu teks.
-5. **Value**: Hasil akhir (Value) berupa *dashboard* statistik *real-time* dan Bot interaktif yang menyelamatkan masyarakat dari kerugian finansial akibat penipuan.
-
-**Gap Analisis:** Saat ini, sistem pengecekan fakta di Indonesia (seperti TurnBackHoax) masih mengandalkan pencarian manual oleh manusia (*human-in-the-loop*). Belum ada solusi terintegrasi yang mampu melakukan **pengecekan otomatis secara real-time** pada aliran *chat* dan mendeteksi teks di dalam gambar secara bersamaan.
-
----
-
-## 🏛️ 2. Desain Infrastruktur Big Data & Justifikasi Teknologi
-
-Sistem ini menerapkan pipeline data lengkap (*Ingestion, Storage, Processing, Serving*). Berikut adalah diagram arsitekturnya:
-
-```mermaid
-graph TD
-    %% Ingestion Layer
-    subgraph Ingestion Layer
-        RSS[RSS Feeds News] --> P1(Python Producer)
-        TG[Telegram Groups/Chats] --> P2(Telethon Producer)
-    end
-
-    %% Streaming & Broker
-    subgraph Streaming Broker
-        P1 -->|JSON| K[Apache Kafka]
-        P2 -->|JSON| K
-    end
-
-    %% Processing & Storage Layer
-    subgraph Processing & Storage
-        K --> C(Kafka Stream Consumer)
-        C <--> AI[FastAPI - NLP IndoBERT & Gemini OCR]
-        
-        %% Data Lakehouse
-        C -->|Batch Sync| Bronze[(Bronze Layer / Raw JSON)]
-        Bronze --> Silver[(Silver Layer / Cleaned)]
-        Silver --> Gold[(Gold Layer / Parquet Aggregated)]
-    end
-    
-    %% Serving Layer
-    subgraph Serving Layer
-        AI -->|Analyzed Payload| K2[Kafka Topic: analyzed-news]
-        K2 --> Bridge(API Bridge / WebSocket)
-        Bridge --> Web[Next.js Real-time Dashboard]
-        Bridge --> Bot[Telegram Bot InfoCheck]
-    end
-```
-
-**Justifikasi Teknologi:**
-- **Apache Kafka**: Dipilih karena kemampuannya menangani *throughput* data *streaming* yang sangat tinggi dengan latensi rendah, serta *fault-tolerance* yang menjaga pesan tidak hilang.
-- **Data Lakehouse (Parquet)**: Menggabungkan fleksibilitas Data Lake dan struktur Data Warehouse. Format Parquet dipilih karena penyimpanannya berbasis kolom (columnar), sehingga sangat efisien untuk kueri analitik dan melatih ulang model Machine Learning.
-- **FastAPI**: Dipilih sebagai jembatan AI karena performanya yang sangat cepat (asynchronous) dibandingkan Flask/Django.
-
----
-
-## 🌊 3. Implementasi Data Lakehouse (Medallion Architecture)
-
-Untuk menjamin kualitas data dalam skala besar, penyimpanan diimplementasikan menggunakan arsitektur Medallion:
-
-```mermaid
-flowchart LR
-    A[Data Mentah dari Kafka & Scraping] -->|Ingest| B[(Bronze Layer)]
-    B -->|Cleaning, Deduplikasi, Normalisasi Label| C[(Silver Layer)]
-    C -->|Format Parquet, Filter 4 Kelas| D[(Gold Layer)]
-    D -->|Training Data| E((Model AI IndoBERT))
-```
-1. **Bronze Layer (Raw Data)**: Data mentah apa adanya disimpan dalam format JSON. Termasuk data *scraping* Telegram dan `ocr_results.json` dari Gemini.
-2. **Silver Layer (Cleaned Data)**: Data dibersihkan (menghilangkan karakter aneh, membetulkan typo, pembersihan spasi).
-3. **Gold Layer (Aggregated/Business Level)**: Data diseleksi secara ketat menjadi 4 kelas absolut (Valid, Hoaks, Penipuan, Netral) agar *dataset* *balanced* (masing-masing 25%), lalu disimpan dalam partisi format **Parquet** (`final_dataset_balanced.parquet`). Format Parquet ini mengoptimalkan I/O saat proses *training* model besar.
-
----
-
-## 🧠 4. Teknik Analisis Lanjutan & Keunikan Solusi
-
-Proyek ini sangat inovatif karena menggabungkan **3 Teknologi Sinergis** sekaligus (Streaming + NLP + Computer Vision):
-
-1. **Natural Language Processing (NLP)**: 
-   - Model **IndoBERT v2** dilatih secara khusus (*Fine-Tuning*) untuk mendeteksi 4 kelas.
-   - Evaluasi model menggunakan metrik *F1-Score* yang mencapai **98.2%** pada *Test Set* (sangat tangguh mengatasi *Class Imbalance*).
-2. **Computer Vision (OCR - Gemini Vision)**:
-   - Sistem mampu mengekstrak teks dari *screenshot* (seperti tangkapan layar penipuan tiket konser atau pinjol) dan menganalisisnya secara otomatis, sebuah fitur yang jarang dimiliki kompetitor pendeteksi hoaks konvensional.
-3. **Kafka Real-time Streaming**:
-   - Seluruh hasil NLP dan OCR ini disalurkan kembali dalam bentuk aliran data waktu nyata untuk disajikan di *Dashboard* statistik.
-
----
-
-## 🏗️ Arsitektur Sistem & Pembagian Tugas Tim
-
-Proyek ini dibangun oleh 6 anggota tim dengan peran masing-masing:
-
-### 👤 Anggota 1: Infrastruktur Big Data & Ingestion (Kafka)
-- **Tugas:** Menyiapkan *message broker* (Apache Kafka & Zookeeper) menggunakan Docker untuk menangani aliran data berkecepatan tinggi. Membangun produser data (RSS Feed) untuk menyedot berita secara otomatis.
-- **Komponen:** `docker-compose.yml`, `producers/rss_producer.py`
-- **Screenshot Hasil:**
-  *(Tambahkan screenshot Terminal Docker/Kafka atau Log RSS Producer di sini)*
-  `![Kafka Running](Screenshot/nama_file_screenshot.png)`
-
-### 👤 Anggota 2: Data Engineering, Lakehouse, & OCR System
-- **Tugas:** Mengumpulkan dataset raksasa (30.000+ baris), membersihkannya, dan membangun arsitektur Data Lakehouse (Bronze, Silver, Gold berformat Parquet). Juga mengintegrasikan OCR pintar (Gemini Vision) untuk mengekstrak teks dari gambar penipuan.
-- **Komponen:** `dataset/`, `scripts/prepare_dataset.py`, `Screenshot/`
-- **Screenshot Hasil:**
-  *(Tambahkan screenshot proses pembuatan dataset atau hasil OCR gambar penipuan di sini)*
-  `![Data Lakehouse](Screenshot/nama_file_screenshot.png)`
-
-### 👤 Anggota 3: NLP & Machine Learning Model (IndoBERT)
-- **Tugas:** Melatih model AI berbasis Deep Learning (IndoBERT 4 Kelas: Valid, Hoaks, Penipuan, Netral) dan membangun Baseline Model (TF-IDF) untuk performa ringan. Membuat REST API agar model bisa diakses oleh sistem lain.
-- **Komponen:** `ml/nlp_baseline.py`, `scripts/kaggle_finetune_indobert.py`, `api/predict_api.py`
-- **Screenshot Hasil:**
-  *(Tambahkan screenshot grafik akurasi 98% dari Colab atau Swagger UI API di sini)*
-  `![API Model](Screenshot/nama_file_screenshot.png)`
-
-### 👤 Anggota 4: Kafka Stream Consumer (Data Processing)
-- **Tugas:** Menjadi jembatan antara aliran data (Kafka) dengan AI. Membaca data mentah secara *real-time*, mengirimkannya ke API AI untuk dianalisis, lalu mengembalikan hasilnya ke dalam topik Kafka baru (`analyzed-news`).
-- **Komponen:** `consumers/stream_consumer.py`
-- **Screenshot Hasil:**
-  *(Tambahkan screenshot Terminal Consumer yang sedang menganalisis pesan)*
-  `![Stream Consumer](Screenshot/nama_file_screenshot.png)`
-
-### 👤 Anggota 5: Frontend Dashboard & API Bridge
-- **Tugas:** Membangun *dashboard* web yang cantik, dinamis, dan *real-time* untuk menampilkan statistik berita dan penipuan. Membangun API Bridge yang menyedot data analitik dari Kafka untuk ditampilkan ke layar pengguna.
-- **Komponen:** `frontend/` (Next.js/React), `api_bridge/main.py`
-- **Screenshot Hasil:**
-  *(Tambahkan screenshot tampilan cantik Dashboard InfoCheck di sini)*
-  `![Web Dashboard](Screenshot/nama_file_screenshot.png)`
-
-### 👤 Anggota 6: Telegram Bot Interaktif
-- **Tugas:** Menciptakan *bot* Telegram responsif (`@InfoCheckID_Bot`) agar masyarakat awam bisa mengecek kebenaran berita atau mendeteksi gambar penipuan cukup dengan mengirim *chat* atau foto.
-- **Komponen:** `bot/telegram_bot.py`
-- **Screenshot Hasil:**
-  *(Tambahkan screenshot percakapan Bot di HP / Telegram Web)*
-  `![Telegram Bot](Screenshot/nama_file_screenshot.png)`
-
----
-
-## 🚀 Panduan Menjalankan Sistem Secara Lengkap (End-to-End)
-
-Untuk mendemonstrasikan sistem ini, jalankan langkah-langkah berikut secara berurutan menggunakan **terminal yang berbeda-beda**.
-
-> **Prasyarat:** Pastikan Docker Desktop sudah menyala dan dependensi Python sudah di-*install* (`pip install -r requirements.txt`).
-
-### 1️⃣ Siapkan Data Lakehouse (Hanya 1x di awal)
-```bash
-python scripts/prepare_dataset.py
-```
-*(Menghasilkan `final_dataset_balanced.parquet` di layer Gold)*
-
-### 2️⃣ Nyalakan Infrastruktur Kafka (Anggota 1)
-```bash
-docker-compose up -d
-```
-*(Tunggu 10 detik hingga Kafka & Zookeeper menyala)*
-
-### 3️⃣ Nyalakan API Model AI (Anggota 3)
-```bash
-# Buka Terminal 1
-python api/predict_api.py
-```
-*(Server AI akan standby di port 8000. Jika PyTorch tidak ada, ia otomatis menggunakan Baseline TF-IDF).*
-
-### 4️⃣ Nyalakan Kafka Consumer (Anggota 4)
-```bash
-# Buka Terminal 2
-python consumers/stream_consumer.py
-```
-*(Terminal akan diam "Menunggu pesan masuk dari Kafka stream...")*
-
-### 5️⃣ Nyalakan API Bridge (Anggota 5 - Backend)
-```bash
-# Buka Terminal 3
-python api_bridge/main.py
-```
-
-### 6️⃣ Nyalakan Dashboard Website (Anggota 5 - Frontend)
-```bash
-# Buka Terminal 4
-cd frontend
-npm run dev
-```
-
-### 7️⃣ Nyalakan Bot Telegram (Anggota 6)
-```bash
-# Buka Terminal 5
-python bot/telegram_bot.py
-```
-
-### 8️⃣ Nyalakan Data Ingestion / Penarik Data (Anggota 1 & 2)
-Untuk mulai mengalirkan data *real-time* ke dalam *Dashboard*, jalankan skrip-skrip pencari data berikut (bisa dijalankan salah satu atau semuanya secara bersamaan di terminal berbeda):
-
-```bash
-# Opsi 1: Menarik Berita RSS Nasional (Detik, Kompas, dll)
-python producers/rss_producer.py
-
-# Opsi 2: Menyadap Grup Penipuan Telegram 
-# Catatan: Jika ditanya nomor HP, masukkan nomor HP-mu (misal: +62812...). Jangan gunakan token Bot agar tidak terjadi error saat menarik riwayat (history) pesan lama.
-python producers/telegram_producer.py
-
-# Opsi 3: Menarik Data Hoaks Resmi dari Kominfo/TurnBackHoax
-python producers/scraper_kominfo.py
-
-# Opsi 4: Simulator Twitter (Menghasilkan cuitan dummy bertema hoaks)
-python producers/twitter_simulator_producer.py
-```
-
-🎉 **Selesai!** 
-Sekarang coba buka Telegram dan kirim pesan ke Bot-mu, atau pantau layar *Dashboard* web-mu. Pesan dari Bot dan hasil tarikan berita (RSS/Telegram) akan mengalir ke Kafka (Anggota 1) $\rightarrow$ ditarik oleh Consumer (Anggota 4) $\rightarrow$ dianalisis oleh AI (Anggota 3) $\rightarrow$ hasilnya dikembalikan ke Kafka dan langsung muncul di Dashboard (Anggota 5) secara ajaib!
 
 ---
 

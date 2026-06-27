@@ -74,21 +74,29 @@ export function ScamDbPanel({ records, query }: ScamDbPanelProps) {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 dark:divide-white/10">
-            {filteredRecords.map((record) => (
-              <tr key={record.id} className="transition hover:bg-slate-50 dark:hover:bg-white/[0.03]">
-                <td className="whitespace-nowrap px-5 py-4 text-slate-700 dark:text-slate-300">{record.type}</td>
-                <td className="whitespace-nowrap px-5 py-4 font-mono text-slate-950 dark:text-cyan-100">{record.value}</td>
-                <td className="px-5 py-4 text-slate-700 dark:text-slate-300">{record.owner}</td>
-                <td className="px-5 py-4 text-slate-500 dark:text-slate-400">{record.source}</td>
-                <td className="whitespace-nowrap px-5 py-4 text-slate-700 dark:text-slate-300">{record.reports}</td>
-                <td className="whitespace-nowrap px-5 py-4">
-                  <span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass[record.status]}`}>
-                    <ShieldAlert size={13} />
-                    {record.status}
-                  </span>
+            {filteredRecords.length > 0 ? (
+              filteredRecords.map((record) => (
+                <tr key={record.id} className="transition hover:bg-slate-50 dark:hover:bg-white/[0.03]">
+                  <td className="whitespace-nowrap px-5 py-4 text-slate-700 dark:text-slate-300">{record.type}</td>
+                  <td className="whitespace-nowrap px-5 py-4 font-mono text-slate-950 dark:text-cyan-100">{record.value}</td>
+                  <td className="px-5 py-4 text-slate-700 dark:text-slate-300">{record.owner}</td>
+                  <td className="px-5 py-4 text-slate-500 dark:text-slate-400">{record.source}</td>
+                  <td className="whitespace-nowrap px-5 py-4 text-slate-700 dark:text-slate-300">{record.reports}</td>
+                  <td className="whitespace-nowrap px-5 py-4">
+                    <span className={`inline-flex items-center gap-2 rounded-full border px-2.5 py-1 text-xs font-semibold ${statusClass[record.status]}`}>
+                      <ShieldAlert size={13} />
+                      {record.status}
+                    </span>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={6} className="px-5 py-8 text-center text-slate-500 dark:text-slate-400">
+                  Belum ada data scam yang tercatat.
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>

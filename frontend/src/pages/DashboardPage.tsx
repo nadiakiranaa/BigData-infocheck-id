@@ -6,7 +6,7 @@ import { OcrTestPanel } from '../components/dashboard/OcrTestPanel';
 import { ScamDbPanel } from '../components/dashboard/ScamDbPanel';
 import { StatsGrid } from '../components/dashboard/StatsGrid';
 import { Sidebar } from '../components/layout/Sidebar';
-import { hourlyVolume, notifications, riskScatter } from '../data/dummyData';
+import { notifications } from '../data/dummyData';
 import { useRealtimeData } from '../hooks/useRealtimeData';
 import type { DashboardTab } from '../types/monitoring';
 
@@ -19,7 +19,7 @@ export function DashboardPage({ onLogout }: DashboardPageProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const { feedItems, scamRecords, stats, isLoading } = useRealtimeData();
+  const { feedItems, scamRecords, stats, hourlyVolume, riskScatter, isLoading } = useRealtimeData();
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', isDarkMode);

@@ -43,25 +43,33 @@ export function LiveFeedTable({ items, query = '' }: LiveFeedTableProps) {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 dark:divide-white/10">
-            {filteredItems.map((item) => (
-              <tr key={item.id} className="transition hover:bg-slate-50 dark:hover:bg-white/[0.03]">
-                <td className="whitespace-nowrap px-5 py-4 font-mono text-xs text-cyan-700 dark:text-cyan-100">{item.time}</td>
-                <td className="whitespace-nowrap px-5 py-4 text-slate-700 dark:text-slate-300">{item.source}</td>
-                <td className="min-w-[320px] px-5 py-4 text-slate-500 dark:text-slate-400">
-                  {item.url ? (
-                    <a href={item.url} target="_blank" rel="noreferrer" className="hover:text-cyan-600 hover:underline dark:hover:text-cyan-400 transition-colors">
-                      {item.snippet}
-                    </a>
-                  ) : (
-                    item.snippet
-                  )}
+            {filteredItems.length > 0 ? (
+              filteredItems.map((item) => (
+                <tr key={item.id} className="transition hover:bg-slate-50 dark:hover:bg-white/[0.03]">
+                  <td className="whitespace-nowrap px-5 py-4 font-mono text-xs text-cyan-700 dark:text-cyan-100">{item.time}</td>
+                  <td className="whitespace-nowrap px-5 py-4 text-slate-700 dark:text-slate-300">{item.source}</td>
+                  <td className="min-w-[320px] px-5 py-4 text-slate-500 dark:text-slate-400">
+                    {item.url ? (
+                      <a href={item.url} target="_blank" rel="noreferrer" className="hover:text-cyan-600 hover:underline dark:hover:text-cyan-400 transition-colors">
+                        {item.snippet}
+                      </a>
+                    ) : (
+                      item.snippet
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-5 py-4">
+                    <Badge status={item.status} />
+                  </td>
+                  <td className="whitespace-nowrap px-5 py-4 text-slate-700 dark:text-slate-300">{item.confidence}%</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={5} className="px-5 py-8 text-center text-slate-500 dark:text-slate-400">
+                  Belum ada pesan yang masuk dari live stream.
                 </td>
-                <td className="whitespace-nowrap px-5 py-4">
-                  <Badge status={item.status} />
-                </td>
-                <td className="whitespace-nowrap px-5 py-4 text-slate-700 dark:text-slate-300">{item.confidence}%</td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>

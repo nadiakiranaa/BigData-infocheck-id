@@ -378,6 +378,9 @@ python producers/rss_producer.py
 ...
 2026-06-26 22:01:00 - INFO - Sleeping for 60 seconds...
 ```
+screenshot_rss_producer_running.png
+
+<img width="636" height="403" alt="image" src="https://github.com/user-attachments/assets/a002d2ae-954f-4e4a-b857-31aec031ddfc" />
 
 ### Menjalankan Scraper Komdigi (Dataset Builder)
 
@@ -385,6 +388,26 @@ python producers/rss_producer.py
 # Scrape database hoaks Komdigi untuk dijadikan ground truth
 python producers/scraper_kominfo.py
 ```
+## Menjalankan Twitter Simulator Producer
+Mensimulasikan data tweet penipuan & hoaks offline ke Kafka topic `twitter-tweets`.
+Dibuat karena Twitter/X API berbayar.
+
+### 7 kategori yang disimulasikan:
+- APK malware, Impersonasi, CS bank palsu
+- Investasi bodong, Tiket palsu, Olshop fiktif, Giveaway palsu
+
+# Jalankan Twitter Simulator (polling setiap 90 detik)
+python producers/twitter_simulator_producer.py
+
+### Output yang diharapkan:
+2026-06-24 09:51:21 - INFO - Twitter Simulator Producer started.
+2026-06-24 09:51:21 - INFO - Dataset: 24 tweet templates siap disimulasikan
+2026-06-24 09:51:22 - INFO - Sent tweet [PENIPUAN] from @tiket_konser_murah88
+2026-06-24 09:51:23 - INFO - Sent tweet [PENIPUAN] from @info_tilang_etle
+2026-06-24 09:51:24 - INFO - Sent tweet [HOAKS] from @info_kebijakan_ri
+2026-06-24 09:51:25 - INFO - Batch selesai: 3 tweets terkirim ke topic 'twitter-tweets'
+
+<img width="1261" height="375" alt="image" src="https://github.com/user-attachments/assets/31161a82-71b2-4fd3-870c-e0fbd411ed60" />
 
 ---
 

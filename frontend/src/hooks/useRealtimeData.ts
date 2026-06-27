@@ -8,6 +8,8 @@ export function useRealtimeData() {
   const [feedItems, setFeedItems] = useState<FeedItem[]>([]);
   const [scamRecords, setScamRecords] = useState<ScamRecord[]>([]);
   const [stats, setStats] = useState<StatCardData[]>([]);
+  const [hourlyVolume, setHourlyVolume] = useState<{label: string, value: number}[]>([]);
+  const [riskScatter, setRiskScatter] = useState<{label: string, value: number}[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -55,6 +57,8 @@ export function useRealtimeData() {
             },
           ];
           setStats(formattedStats);
+          setHourlyVolume(statsData.hourly_volume || []);
+          setRiskScatter(statsData.risk_scatter || []);
 
           // 2. Format Live Feed
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -142,5 +146,5 @@ export function useRealtimeData() {
     };
   }, []);
 
-  return { feedItems, scamRecords, stats, isLoading };
+  return { feedItems, scamRecords, stats, hourlyVolume, riskScatter, isLoading };
 }

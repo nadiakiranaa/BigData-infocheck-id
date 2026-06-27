@@ -264,7 +264,7 @@ curl http://localhost:8000/stats
 | No | Peran | File Utama | Tanggung Jawab |
 |----|-------|------------|----------------|
 | **Anggota 1** | Data Collector | `producers/rss_producer.py`, `producers/scraper_kominfo.py` | Pengumpulan data dari RSS feed 18+ sumber berita nasional dan scraping dataset Komdigi |
-| **Anggota 2** | Data Engineer | `producers/telegram_producer.py`, `producers/twitter_simulator_producer.py` | Ingestion data real-time dari Telegram channel dan simulasi Twitter, publish ke Kafka |
+| **Anggota 2** | Data Engineer | `producers/telegram_producer.py`, `producers/twitter_simulator_producer.py`, `scripts/prepare_dataset.py` | Ingestion data real-time dari Telegram channel dan simulasi Twitter, serta persiapan dataset (Data Lakehouse) |
 | **Anggota 3** | ML/NLP Engineer | `api/predict_api.py`, `api/komdigi_similarity.py`, `api/ocr_engine.py`, `ml/active_learning.py`, `scripts/kaggle_finetune_indobert.py` | Fine-tuning IndoBERT, API prediksi hybrid, OCR Gemini, Active Learning, Komdigi Similarity |
 | **Anggota 4** | Stream Engineer | `consumers/stream_consumer.py`, `bot/telegram_bot.py` | Kafka Stream Consumer: baca data streaming, panggil API, publish hasil ke `analyzed-news`. Serta antarmuka Bot Telegram. |
 | **Anggota 5** | Data Analyst | `frontend/` (dashboard), `api_bridge/` | Konsumsi topik `analyzed-news`, dashboard visualisasi real-time hasil analisis, dan REST API Bridge untuk frontend. |
@@ -415,10 +415,11 @@ python producers/twitter_simulator_producer.py
 
 ### Deskripsi Tugas
 
-Anggota 2 bertanggung jawab menyediakan dua sumber data streaming tambahan:
+Anggota 2 bertanggung jawab menyediakan sumber data streaming tambahan dan mempersiapkan dataset:
 
 1. **Telegram Producer** — Membaca pesan dari channel Telegram publik (saluran info hoaks, aduan penipuan) dan mempublishnya ke topic Kafka `telegram-messages`
 2. **Twitter Simulator Producer** — Mensimulasikan data tweet berbahasa Indonesia untuk uji sistem tanpa API Twitter berbayar
+3. **Persiapan Dataset** — Membersihkan dataset (Silver Layer) dan mengubahnya menjadi format Parquet untuk keperluan training AI (Gold Layer)
 
 ### Setup Telegram Producer
 
@@ -447,6 +448,26 @@ INFO - Pesan baru diterima -> Publish ke Kafka topic 'telegram-messages'
 # Jalankan simulasi data Twitter (tidak memerlukan API key Twitter)
 python producers/twitter_simulator_producer.py
 ```
+![alt text](<Prepare dataset.png>)
+
+![alt text](<Twitter simulator.png>)
+
+![alt text](<Telegram producer.png>)
+
+### Persiapan Dataset (Data Lakehouse)
+
+```bash
+# Cek dataset yang tersedia
+ls -lh dataset/
+
+# Output dataset:
+# dataset/final_dataset.csv              (dataset utama lengkap ~67MB)
+# dataset/final_dataset_balanced.csv     (dataset balanced untuk training ~2.3MB)
+# dataset/dataset_sms_spam_v1.csv        (dataset SMS spam)
+
+# Jalankan script persiapan dataset (jika diperlukan)
+python scripts/prepare_dataset.py
+```
 
 ---
 
@@ -474,22 +495,7 @@ Sistem mengklasifikasikan konten ke dalam 4 kelas berikut:
 | **Penipuan** | Konten dengan motif penipuan finansial/data pribadi | Chat penipuan loker bodong, transfer palsu, link phishing, APK berbahaya, pinjol ilegal |
 | **Netral** | Konten normal tanpa indikasi hoaks atau penipuan | Opini pribadi, promosi toko resmi, informasi umum sehari-hari, pengumuman biasa |
 
-### Step 1 — Persiapkan Dataset
-
-```bash
-# Cek dataset yang tersedia
-ls -lh dataset/
-
-# Output dataset:
-# dataset/final_dataset.csv              (dataset utama lengkap ~67MB)
-# dataset/final_dataset_balanced.csv     (dataset balanced untuk training ~2.3MB)
-# dataset/dataset_sms_spam_v1.csv        (dataset SMS spam)
-
-# Jalankan script persiapan dataset (jika diperlukan)
-python scripts/prepare_dataset.py
-```
-
-### Step 2 — Fine-Tuning IndoBERT
+### Step 1 — Fine-Tuning IndoBERT
 
 Model IndoBERT perlu dilatih menggunakan GPU melalui Google Colab atau Kaggle. Upload file `dataset/final_dataset_balanced.csv` dan jalankan script `scripts/kaggle_finetune_indobert.py`. Setelah training selesai, download hasilnya dan taruh di `model/indobert-infocheck-final/`.
 
@@ -516,7 +522,7 @@ ls model/indobert-infocheck-final/
 python -c "import json; cfg=json.load(open('model/indobert-infocheck-final/config.json')); print('Num labels:', cfg.get('num_labels')); print('ID2Label:', cfg.get('id2label'))"
 ```
 
-### Step 3 — Bangun Komdigi Similarity Index
+### Step 2 — Bangun Komdigi Similarity Index
 
 ```bash
 # Bangun TF-IDF index dari database hoaks Komdigi (jalankan sekali saja)
@@ -530,7 +536,7 @@ Total artikel Komdigi: 5234
 Index tersimpan ke 'komdigi_index.pkl'
 ```
 
-### Step 4 — Jalankan FastAPI Engine
+### Step 3 — Jalankan FastAPI Engine
 
 ```bash
 # Jalankan FastAPI Server (mode development)
@@ -552,7 +558,7 @@ INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
-### Step 5 — Test Prediksi API
+### Step 4 — Test Prediksi API
 
 **Test klasifikasi HOAKS:**
 
@@ -621,7 +627,7 @@ curl http://localhost:8000/stats
 }
 ```
 
-### Step 6 — Analisis Screenshot (OCR Gemini)
+### Step 5 — Analisis Screenshot (OCR Gemini)
 
 ```bash
 # Convert gambar ke base64 dan kirim ke API
@@ -636,7 +642,7 @@ print(json.dumps(resp.json(), indent=2, ensure_ascii=False))
 ![Bukti OCR](docs/ocr.jpeg)
 
 
-### Step 7 — Jalankan Active Learning (Retraining Otomatis)
+### Step 6 — Jalankan Active Learning (Retraining Otomatis)
 
 Active Learning dipicu otomatis oleh API saat feedback pengguna mencapai threshold. Untuk trigger manual:
 

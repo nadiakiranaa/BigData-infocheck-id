@@ -10,7 +10,9 @@ type AnalysisResult = {
 export function OcrTestPanel() {
   const [fileName, setFileName] = useState<string>('');
   const [isDragging, setIsDragging] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const helperText = useMemo(() => {
     if (fileName) {
@@ -20,20 +22,43 @@ export function OcrTestPanel() {
     return 'PNG, JPG, atau screenshot percakapan';
   }, [fileName]);
 
-  const setUploadedFile = useCallback((file?: File) => {
-    if (!file) {
+  const setUploadedFile = useCallback((uploadedFile?: File) => {
+    if (!uploadedFile) {
       return;
     }
 
-    setFileName(file.name);
+    setFile(uploadedFile);
+    setFileName(uploadedFile.name);
     setResult(null);
   }, []);
 
-  const handleAnalyze = () => {
-    setResult({
-      text: 'Selamat! Anda terpilih menerima bantuan Rp5.000.000. Klik tautan bit.ly/claim-bansos untuk verifikasi rekening.',
-      status: fileName ? 'Scam Terdeteksi' : 'Perlu Review',
-    });
+  const handleAnalyze = async () => {
+    if (!file) return;
+
+    setIsAnalyzing(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await fetch('http://localhost:8001/api/test-ocr', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) throw new Error('API Error');
+
+      const data = await res.json();
+      setResult({
+        text: data.text || 'Tidak ada teks terdeteksi.',
+        status: data.is_scam ? 'Scam Terdeteksi' : 'Perlu Review',
+      });
+    } catch (error) {
+      setResult({
+        text: 'Error saat menganalisis gambar.',
+        status: 'Perlu Review',
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   return (
@@ -46,10 +71,11 @@ export function OcrTestPanel() {
         <button
           type="button"
           onClick={handleAnalyze}
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-600 dark:bg-cyan-300 dark:text-slate-950 dark:hover:bg-cyan-200"
+          disabled={!file || isAnalyzing}
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-cyan-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-600 disabled:opacity-50 dark:bg-cyan-300 dark:text-slate-950 dark:hover:bg-cyan-200"
         >
           <ScanText size={17} />
-          Analisis Gambar
+          {isAnalyzing ? 'Menganalisis...' : 'Analisis Gambar'}
         </button>
       </div>
 

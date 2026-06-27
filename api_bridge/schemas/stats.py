@@ -6,6 +6,10 @@ class LabelDistribution(BaseModel):
     hoaks: float = Field(..., ge=0, le=100)
     scam: float = Field(..., ge=0, le=100)
 
+class ChartPoint(BaseModel):
+    label: str
+    value: int
+
 
 class StatsResponse(BaseModel):
     total_messages_today: int
@@ -15,3 +19,5 @@ class StatsResponse(BaseModel):
     hoax_vs_valid_percent: LabelDistribution
     active_sources: int
     last_updated: str
+    hourly_volume: list[ChartPoint]
+    risk_scatter: list[ChartPoint]

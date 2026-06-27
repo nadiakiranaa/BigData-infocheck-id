@@ -6,6 +6,7 @@ import logging
 from datetime import datetime
 import feedparser
 import requests
+from bs4 import BeautifulSoup
 from utils.kafka_helper import send_to_kafka, close_producer
 
 # Setup logging
@@ -99,7 +100,10 @@ def fetch_and_ingest():
                     continue
                 
                 title = entry.get('title', '')
-                description = entry.get('summary', entry.get('description', ''))
+                raw_description = entry.get('summary', entry.get('description', ''))
+                
+                # Bersihkan tag HTML (seperti <img>) agar tampilan rapi di dashboard
+                description = BeautifulSoup(raw_description, "html.parser").get_text(separator=" ", strip=True)
                 
                 # Parse publishing time, fall back to current time if unavailable
                 published = entry.get('published', '')
